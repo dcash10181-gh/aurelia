@@ -12,3 +12,16 @@ describe("parseSseFrame", () => {
     expect(parseSseFrame("data: {oops")).toEqual({});
   });
 });
+
+describe("parseSseFrame meta + done", () => {
+  it("parses meta frames", () => {
+    const f = parseSseFrame('data: {"meta":{"provider":"mini","tool_calls":[]}}');
+    expect(f.meta?.provider).toBe("mini");
+  });
+  it("still detects done", () => {
+    expect(parseSseFrame("data: [DONE]").done).toBe(true);
+  });
+  it("ignores malformed frames", () => {
+    expect(parseSseFrame("data: not-json")).toEqual({});
+  });
+});

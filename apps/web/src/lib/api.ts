@@ -37,14 +37,60 @@ export const api = {
   providers: () => fetch("/api/providers").then((r) => j<ProviderInfo[]>(r)),
 };
 
+export interface StreamMeta { provider: string; tool_calls: ToolCall[] }
+
 /** Parse one SSE frame from /api/chat/stream. Exported for unit tests. */
-export function parseSseFrame(frame: string): { token?: string; done?: boolean } {
+export function parseSseFrame(
+  frame: string,
+): { token?: string; meta?: StreamMeta; done?: boolean } {
   const data = frame.replace(/^data:\s*/, "").trim();
   if (data === "[DONE]") return { done: true };
   try {
     const obj = JSON.parse(data);
-    return { token: obj.token };
+    if (obj.meta) return { meta: obj.meta as StreamMeta };
+    if (typeof obj.token === "string") return { token: obj.token };
+    return {};
   } catch {
     return {};
   }
+}
+
+/**
+ * Stream a chat turn. Calls onToken for each text piece as it arrives and
+ * resolves with the meta frame (provider + tool calls) when the stream ends.
+ * Frames are buffered on the SSE delimiter (\n\n) because network reads can
+ * split or coalesce frames arbitrarily.
+ */
+export async function chatStream(
+  message: string,
+  provider: string | null,
+  onToken: (t: string) => void,
+): Promise<StreamMeta> {
+  const res = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, provider: provider ?? null }),
+  });
+  if (!res.ok || !res.body) throw new Error(`${res.status}: ${await res.text()}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let meta: StreamMeta = { provider: "unknown", tool_calls: [] };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const parsed = parseSseFrame(frame);
+      if (parsed.token !== undefined) onToken(parsed.token);
+      if (parsed.meta) meta = parsed.meta;
+      if (parsed.done) return meta;
+    }
+  }
+  return meta;
 }

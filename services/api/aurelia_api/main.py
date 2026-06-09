@@ -3,14 +3,13 @@
 Run: uvicorn aurelia_api.main:app --port 8484
 Endpoints are documented at /docs (FastAPI's built-in OpenAPI UI).
 
-Streaming-readiness: /api/chat/stream returns Server-Sent Events. Today it
-chunks the final reply word-by-word; the contract (SSE `data:` frames ending
-with `[DONE]`) is what real token streaming will use, so the frontend never
-needs to change when a streaming provider lands.
+Streaming: /api/chat/stream returns Server-Sent Events with true token-level
+delivery — each frame is emitted as the provider produces it (per sampled
+token for the mini LLM, per NDJSON chunk for Ollama, word-chunked for the
+rule-based fallback). Frames are JSON `data:` lines ending with `[DONE]`.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import platform
@@ -19,9 +18,10 @@ import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 
 from . import __version__
-from .agent.loop import run_agent_turn
+from .agent.loop import run_agent_turn, run_agent_turn_stream
 from .config import settings
 from .logging_setup import configure_logging
 from .models.schemas import ChatRequest, ChatResponse, MemoryCreate, MemoryOut, ToolInvoke
@@ -96,17 +96,26 @@ def agent(req: ChatRequest):
 async def chat_stream(req: ChatRequest):
     provider = _provider(req.provider)
     db.add_message("user", req.message)
-    result = run_agent_turn(req.message, provider, registry, db)
-    db.add_message("assistant", result["reply"])
 
     async def gen():
-        for word in result["reply"].split(" "):
-            yield f"data: {json.dumps({'token': word + ' '})}\n\n"
-            await asyncio.sleep(0.012)
-        yield f"data: {json.dumps({'meta': {'provider': result['provider'], 'tool_calls': result['tool_calls']}})}\n\n"
+        # Bridge the synchronous agent/provider generator into the async SSE
+        # response without blocking the event loop: iterate_in_threadpool
+        # pulls each item on a worker thread, so tokens flush to the client
+        # the moment the model samples them.
+        parts: list[str] = []
+        agent_iter = run_agent_turn_stream(req.message, provider, registry)
+        async for frame in iterate_in_threadpool(agent_iter):
+            if "token" in frame:
+                parts.append(frame["token"])
+            yield f"data: {json.dumps(frame)}\n\n"
         yield "data: [DONE]\n\n"
+        # Persist once, after the full reply exists. Runs inside the generator
+        # so a client disconnect mid-stream still persists what was sent.
+        db.add_message("assistant", "".join(parts))
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/messages")

@@ -39,3 +39,22 @@ def test_training_step_reduces_loss():
         opt.step()
     _, loss1 = model(x, y)
     assert loss1.item() < loss0.item()
+
+
+def test_stream_generate_matches_batch_shape(tmp_path):
+    """stream_generate yields exactly max_new_tokens ids; generate() (which
+    wraps it) returns prompt + that many tokens."""
+    import torch
+    from aurelia_mini_llm.config import MiniConfig
+    from aurelia_mini_llm.model import MiniGPT
+
+    cfg = MiniConfig(vocab_size=20, block_size=16, n_layer=1, n_head=2, n_embd=16)
+    model = MiniGPT(cfg)
+    idx = torch.zeros((1, 4), dtype=torch.long)
+
+    streamed = list(model.stream_generate(idx, max_new_tokens=7))
+    assert len(streamed) == 7
+    assert all(isinstance(t, int) and 0 <= t < cfg.vocab_size for t in streamed)
+
+    out = model.generate(idx, max_new_tokens=7)
+    assert out.shape == (1, 4 + 7)

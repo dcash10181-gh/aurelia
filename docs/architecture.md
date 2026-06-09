@@ -32,6 +32,16 @@ detection of calculation/time/note intents) because the bundled models cannot
 emit reliable structured tool calls; the loop is provider-agnostic so
 LLM-driven function calling can replace routing without API changes.
 
+## Streaming (`/api/chat/stream`)
+True token-level SSE. The provider interface exposes `stream()`: the mini LLM
+yields each sampled token (one char with the char tokenizer), Ollama forwards
+NDJSON chunks as they arrive, and the rule-based fallback word-chunks its
+deterministic reply. The agent loop streams model turns and emits tool results
+as a single atomic frame (a computed fact gains nothing from fake typing).
+The endpoint bridges the sync generator via `iterate_in_threadpool` so tokens
+flush the moment they are sampled, and persists the assistant message after
+the stream completes.
+
 ## Memory (`aurelia_api/storage/db.py`)
 SQLite with WAL mode; `memories` and `messages` tables. Search uses an
 FTS5 external-content index (`memories_fts`) with BM25 relevance ranking and

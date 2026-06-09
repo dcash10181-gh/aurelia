@@ -1,0 +1,10 @@
+pyproject.toml
+aurelia_cli/__init__.py
+aurelia_cli/main.py
+aurelia_cli.egg-info/PKG-INFO
+aurelia_cli.egg-info/SOURCES.txt
+aurelia_cli.egg-info/dependency_links.txt
+aurelia_cli.egg-info/entry_points.txt
+aurelia_cli.egg-info/requires.txt
+aurelia_cli.egg-info/top_level.txt
+tests/test_cli_smoke.py

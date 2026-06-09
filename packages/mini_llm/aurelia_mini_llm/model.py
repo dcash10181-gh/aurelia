@@ -85,8 +85,14 @@ class MiniGPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int = 120,
-                 temperature: float = 0.9, top_k: int = 40) -> torch.Tensor:
+    def stream_generate(self, idx: torch.Tensor, max_new_tokens: int = 120,
+                        temperature: float = 0.9, top_k: int = 40):
+        """Yield one sampled token id (int) at a time.
+
+        Architectural decision: streaming is the primitive and `generate()` is
+        a wrapper over it, not the other way around — there is exactly one
+        sampling loop to maintain, and callers choose batch vs incremental.
+        """
         self.eval()
         for _ in range(max_new_tokens):
             ctx = idx[:, -self.cfg.block_size:]
@@ -98,4 +104,13 @@ class MiniGPT(nn.Module):
             probs = F.softmax(logits, dim=-1)
             nxt = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, nxt], dim=1)
+            yield int(nxt.item())
+
+    @torch.no_grad()
+    def generate(self, idx: torch.Tensor, max_new_tokens: int = 120,
+                 temperature: float = 0.9, top_k: int = 40) -> torch.Tensor:
+        new_ids = list(self.stream_generate(idx, max_new_tokens, temperature, top_k))
+        if new_ids:
+            tail = torch.tensor([new_ids], dtype=torch.long, device=idx.device)
+            idx = torch.cat([idx, tail], dim=1)
         return idx

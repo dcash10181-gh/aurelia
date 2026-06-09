@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { api, ChatResult } from "../lib/api";
+import { chatStream } from "../lib/api";
 import { Halo } from "./Halo";
 
 interface Msg { role: "user" | "assistant"; content: string; meta?: string }
@@ -20,15 +20,38 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
     setMsgs((m) => [...m, { role: "user", content: text }]);
     setState("thinking");
     try {
-      const res: ChatResult = await api.chat(text, provider);
-      if (res.tool_calls.length) { setState("tool"); onToolUse(); }
-      setMsgs((m) => [...m, { role: "assistant", content: res.reply, meta: res.provider }]);
+      // Append an empty assistant bubble, then fill it token-by-token. The
+      // updater always rewrites the LAST message, so concurrent renders stay
+      // consistent without tracking an index.
+      setMsgs((m) => [...m, { role: "assistant", content: "", meta: undefined }]);
+      const meta = await chatStream(text, provider, (t) =>
+        setMsgs((m) => {
+          const next = m.slice();
+          const last = next[next.length - 1];
+          next[next.length - 1] = { ...last, content: last.content + t };
+          return next;
+        }),
+      );
+      if (meta.tool_calls.length) { setState("tool"); onToolUse(); }
+      setMsgs((m) => {
+        const next = m.slice();
+        next[next.length - 1] = { ...next[next.length - 1], meta: meta.provider };
+        return next;
+      });
     } catch (err) {
-      setMsgs((m) => [...m, {
-        role: "assistant",
-        content: `Backend unreachable. Start it with \`aurelia start\`, then retry. (${err})`,
-        meta: "system",
-      }]);
+      // Replace the (possibly empty) streaming bubble with the error.
+      setMsgs((m) => {
+        const next = m.slice();
+        const last = next[next.length - 1];
+        const errMsg = {
+          role: "assistant" as const,
+          content: `Backend unreachable. Start it with \`aurelia start\`, then retry. (${err})`,
+          meta: "system",
+        };
+        if (last?.role === "assistant" && last.content === "") next[next.length - 1] = errMsg;
+        else next.push(errMsg);
+        return next;
+      });
     } finally {
       setTimeout(() => setState("idle"), 400);
     }
