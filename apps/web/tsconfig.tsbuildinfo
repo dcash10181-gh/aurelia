@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/Chat.tsx","./src/components/CommandPalette.tsx","./src/components/Halo.tsx","./src/components/Onboarding.tsx","./src/components/SidePanel.tsx","./src/lib/api.ts"],"version":"5.9.3"}

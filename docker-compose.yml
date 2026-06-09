@@ -1,0 +1,18 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    ports: ["8484:8484"]
+    environment:
+      AURELIA_HOST: 0.0.0.0   # container-internal only; published to localhost
+      AURELIA_DATA_DIR: /data
+    volumes: ["aurelia-data:/data"]
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports: ["3000:3000"]
+    depends_on: [api]
+volumes:
+  aurelia-data:
