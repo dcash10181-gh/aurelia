@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Near-term
-- SQLite FTS5 for memory search (replace LIKE).
+- ~~SQLite FTS5 for memory search (replace LIKE)~~ — shipped: BM25-ranked FTS5 with prefix matching, sync triggers, auto-migration, LIKE fallback.
 - True token streaming from providers through the existing SSE contract.
 - LLM-driven tool selection when a capable provider (Ollama) is configured.
 - Memory auto-recall: inject relevant memories into provider prompts.
