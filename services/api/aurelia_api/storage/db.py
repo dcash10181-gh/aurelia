@@ -30,15 +30,59 @@ CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 """
 
+# FTS5 schema is kept separate so we can degrade gracefully on SQLite builds
+# compiled without the FTS5 extension (rare, but exists on some distros).
+# Architectural decision: external-content FTS table ('content=memories')
+# instead of a standalone FTS table — the text is stored once in `memories`,
+# the FTS index holds only the inverted index, and triggers keep it in sync.
+_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    content, tags,
+    content='memories', content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER IF NOT EXISTS memories_fts_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, content, tags)
+    VALUES (new.rowid, new.content, new.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_fts_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, tags)
+    VALUES ('delete', old.rowid, old.content, old.tags);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_fts_au AFTER UPDATE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, content, tags)
+    VALUES ('delete', old.rowid, old.content, old.tags);
+    INSERT INTO memories_fts(rowid, content, tags)
+    VALUES (new.rowid, new.content, new.tags);
+END;
+"""
+
 
 class Database:
     def __init__(self, path: str | Path):
         self.path = str(path)
+        self.fts_enabled = False
         self._init()
 
     def _init(self) -> None:
         with self.connect() as conn:
             conn.executescript(_SCHEMA)
+            try:
+                conn.executescript(_FTS_SCHEMA)
+                # Migration for databases created before FTS existed. NB: with
+                # an external-content table, `count(*) FROM memories_fts` reads
+                # through to `memories` and always matches — the true index
+                # state is the docsize shadow table (one row per indexed doc).
+                mem_count = conn.execute("SELECT count(*) FROM memories").fetchone()[0]
+                fts_count = conn.execute(
+                    "SELECT count(*) FROM memories_fts_docsize"
+                ).fetchone()[0]
+                if mem_count != fts_count:
+                    conn.execute("INSERT INTO memories_fts(memories_fts) VALUES ('rebuild')")
+                self.fts_enabled = True
+            except sqlite3.OperationalError:
+                # SQLite built without FTS5 — fall back to LIKE search.
+                self.fts_enabled = False
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -75,8 +119,41 @@ class Database:
         return [self._memory_out(dict(r)) for r in rows]
 
     def search_memories(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
-        # Simple LIKE search: adequate for local scale; FTS5 is a documented
-        # upgrade path in docs/roadmap.md.
+        """Full-text search over memory content and tags.
+
+        Uses FTS5 with BM25 relevance ranking when available. User input is
+        never passed to FTS5 as raw query syntax: each whitespace token is
+        double-quoted (neutralizing operators like NEAR/AND/-) and given a
+        prefix wildcard, so "proj plan" matches "project planning". Falls
+        back to LIKE on builds without FTS5 or for queries FTS5 rejects.
+        """
+        query = query.strip()
+        if not query:
+            return []
+        if self.fts_enabled:
+            match = self._fts_query(query)
+            try:
+                with self.connect() as conn:
+                    rows = conn.execute(
+                        "SELECT m.* FROM memories_fts f "
+                        "JOIN memories m ON m.rowid = f.rowid "
+                        "WHERE memories_fts MATCH ? "
+                        "ORDER BY bm25(memories_fts), m.created_at DESC LIMIT ?",
+                        (match, limit),
+                    ).fetchall()
+                return [self._memory_out(dict(r)) for r in rows]
+            except sqlite3.OperationalError:
+                pass  # pathological query string — degrade to LIKE
+        return self._like_search(query, limit)
+
+    @staticmethod
+    def _fts_query(query: str) -> str:
+        # Quote each token (escaping embedded quotes per FTS5 rules) and add
+        # a prefix wildcard. Tokens are ANDed: all terms must match.
+        tokens = [t.replace('"', '""') for t in query.split()]
+        return " AND ".join(f'"{t}"*' for t in tokens if t)
+
+    def _like_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         like = f"%{query}%"
         with self.connect() as conn:
             rows = conn.execute(

@@ -33,9 +33,13 @@ emit reliable structured tool calls; the loop is provider-agnostic so
 LLM-driven function calling can replace routing without API changes.
 
 ## Memory (`aurelia_api/storage/db.py`)
-SQLite with WAL mode; `memories` and `messages` tables; LIKE-based search
-(FTS5 is the documented upgrade). Plain `sqlite3` + DAO functions — an ORM
-adds nothing at this scale.
+SQLite with WAL mode; `memories` and `messages` tables. Search uses an
+FTS5 external-content index (`memories_fts`) with BM25 relevance ranking and
+per-token prefix matching; insert/update/delete triggers keep it in sync, and
+startup rebuilds the index if it diverges (auto-migration for pre-FTS
+databases). User input is never interpreted as FTS5 query syntax — tokens are
+quoted and ANDed. Builds without FTS5, or pathological queries, degrade to
+LIKE. Plain `sqlite3` + DAO functions — an ORM adds nothing at this scale.
 
 ## Tools (`aurelia_api/tools/`)
 `Tool` dataclass + `ToolRegistry`. Built-ins: calculator (ast-allowlist, no
