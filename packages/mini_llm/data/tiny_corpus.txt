@@ -1,0 +1,400 @@
+aurelia listens on your machine.
+aurelia listens without the cloud.
+aurelia listens in quiet amber light.
+aurelia listens for the person at the keyboard.
+aurelia responds on your machine.
+aurelia responds without the cloud.
+aurelia responds in quiet amber light.
+aurelia responds for the person at the keyboard.
+aurelia learns slowly on your machine.
+aurelia learns slowly without the cloud.
+aurelia learns slowly in quiet amber light.
+aurelia learns slowly for the person at the keyboard.
+aurelia runs locally on your machine.
+aurelia runs locally without the cloud.
+aurelia runs locally in quiet amber light.
+aurelia runs locally for the person at the keyboard.
+aurelia stores notes on your machine.
+aurelia stores notes without the cloud.
+aurelia stores notes in quiet amber light.
+aurelia stores notes for the person at the keyboard.
+aurelia keeps time on your machine.
+aurelia keeps time without the cloud.
+aurelia keeps time in quiet amber light.
+aurelia keeps time for the person at the keyboard.
+aurelia computes sums on your machine.
+aurelia computes sums without the cloud.
+aurelia computes sums in quiet amber light.
+aurelia computes sums for the person at the keyboard.
+aurelia stays private on your machine.
+aurelia stays private without the cloud.
+aurelia stays private in quiet amber light.
+aurelia stays private for the person at the keyboard.
+aurelia glows softly on your machine.
+aurelia glows softly without the cloud.
+aurelia glows softly in quiet amber light.
+aurelia glows softly for the person at the keyboard.
+aurelia starts quickly on your machine.
+aurelia starts quickly without the cloud.
+aurelia starts quickly in quiet amber light.
+aurelia starts quickly for the person at the keyboard.
+the agent listens on your machine.
+the agent listens without the cloud.
+the agent listens in quiet amber light.
+the agent listens for the person at the keyboard.
+the agent responds on your machine.
+the agent responds without the cloud.
+the agent responds in quiet amber light.
+the agent responds for the person at the keyboard.
+the agent learns slowly on your machine.
+the agent learns slowly without the cloud.
+the agent learns slowly in quiet amber light.
+the agent learns slowly for the person at the keyboard.
+the agent runs locally on your machine.
+the agent runs locally without the cloud.
+the agent runs locally in quiet amber light.
+the agent runs locally for the person at the keyboard.
+the agent stores notes on your machine.
+the agent stores notes without the cloud.
+the agent stores notes in quiet amber light.
+the agent stores notes for the person at the keyboard.
+the agent keeps time on your machine.
+the agent keeps time without the cloud.
+the agent keeps time in quiet amber light.
+the agent keeps time for the person at the keyboard.
+the agent computes sums on your machine.
+the agent computes sums without the cloud.
+the agent computes sums in quiet amber light.
+the agent computes sums for the person at the keyboard.
+the agent stays private on your machine.
+the agent stays private without the cloud.
+the agent stays private in quiet amber light.
+the agent stays private for the person at the keyboard.
+the agent glows softly on your machine.
+the agent glows softly without the cloud.
+the agent glows softly in quiet amber light.
+the agent glows softly for the person at the keyboard.
+the agent starts quickly on your machine.
+the agent starts quickly without the cloud.
+the agent starts quickly in quiet amber light.
+the agent starts quickly for the person at the keyboard.
+the local model listens on your machine.
+the local model listens without the cloud.
+the local model listens in quiet amber light.
+the local model listens for the person at the keyboard.
+the local model responds on your machine.
+the local model responds without the cloud.
+the local model responds in quiet amber light.
+the local model responds for the person at the keyboard.
+the local model learns slowly on your machine.
+the local model learns slowly without the cloud.
+the local model learns slowly in quiet amber light.
+the local model learns slowly for the person at the keyboard.
+the local model runs locally on your machine.
+the local model runs locally without the cloud.
+the local model runs locally in quiet amber light.
+the local model runs locally for the person at the keyboard.
+the local model stores notes on your machine.
+the local model stores notes without the cloud.
+the local model stores notes in quiet amber light.
+the local model stores notes for the person at the keyboard.
+the local model keeps time on your machine.
+the local model keeps time without the cloud.
+the local model keeps time in quiet amber light.
+the local model keeps time for the person at the keyboard.
+the local model computes sums on your machine.
+the local model computes sums without the cloud.
+the local model computes sums in quiet amber light.
+the local model computes sums for the person at the keyboard.
+the local model stays private on your machine.
+the local model stays private without the cloud.
+the local model stays private in quiet amber light.
+the local model stays private for the person at the keyboard.
+the local model glows softly on your machine.
+the local model glows softly without the cloud.
+the local model glows softly in quiet amber light.
+the local model glows softly for the person at the keyboard.
+the local model starts quickly on your machine.
+the local model starts quickly without the cloud.
+the local model starts quickly in quiet amber light.
+the local model starts quickly for the person at the keyboard.
+the command layer listens on your machine.
+the command layer listens without the cloud.
+the command layer listens in quiet amber light.
+the command layer listens for the person at the keyboard.
+the command layer responds on your machine.
+the command layer responds without the cloud.
+the command layer responds in quiet amber light.
+the command layer responds for the person at the keyboard.
+the command layer learns slowly on your machine.
+the command layer learns slowly without the cloud.
+the command layer learns slowly in quiet amber light.
+the command layer learns slowly for the person at the keyboard.
+the command layer runs locally on your machine.
+the command layer runs locally without the cloud.
+the command layer runs locally in quiet amber light.
+the command layer runs locally for the person at the keyboard.
+the command layer stores notes on your machine.
+the command layer stores notes without the cloud.
+the command layer stores notes in quiet amber light.
+the command layer stores notes for the person at the keyboard.
+the command layer keeps time on your machine.
+the command layer keeps time without the cloud.
+the command layer keeps time in quiet amber light.
+the command layer keeps time for the person at the keyboard.
+the command layer computes sums on your machine.
+the command layer computes sums without the cloud.
+the command layer computes sums in quiet amber light.
+the command layer computes sums for the person at the keyboard.
+the command layer stays private on your machine.
+the command layer stays private without the cloud.
+the command layer stays private in quiet amber light.
+the command layer stays private for the person at the keyboard.
+the command layer glows softly on your machine.
+the command layer glows softly without the cloud.
+the command layer glows softly in quiet amber light.
+the command layer glows softly for the person at the keyboard.
+the command layer starts quickly on your machine.
+the command layer starts quickly without the cloud.
+the command layer starts quickly in quiet amber light.
+the command layer starts quickly for the person at the keyboard.
+the system listens on your machine.
+the system listens without the cloud.
+the system listens in quiet amber light.
+the system listens for the person at the keyboard.
+the system responds on your machine.
+the system responds without the cloud.
+the system responds in quiet amber light.
+the system responds for the person at the keyboard.
+the system learns slowly on your machine.
+the system learns slowly without the cloud.
+the system learns slowly in quiet amber light.
+the system learns slowly for the person at the keyboard.
+the system runs locally on your machine.
+the system runs locally without the cloud.
+the system runs locally in quiet amber light.
+the system runs locally for the person at the keyboard.
+the system stores notes on your machine.
+the system stores notes without the cloud.
+the system stores notes in quiet amber light.
+the system stores notes for the person at the keyboard.
+the system keeps time on your machine.
+the system keeps time without the cloud.
+the system keeps time in quiet amber light.
+the system keeps time for the person at the keyboard.
+the system computes sums on your machine.
+the system computes sums without the cloud.
+the system computes sums in quiet amber light.
+the system computes sums for the person at the keyboard.
+the system stays private on your machine.
+the system stays private without the cloud.
+the system stays private in quiet amber light.
+the system stays private for the person at the keyboard.
+the system glows softly on your machine.
+the system glows softly without the cloud.
+the system glows softly in quiet amber light.
+the system glows softly for the person at the keyboard.
+the system starts quickly on your machine.
+the system starts quickly without the cloud.
+the system starts quickly in quiet amber light.
+the system starts quickly for the person at the keyboard.
+memory listens on your machine.
+memory listens without the cloud.
+memory listens in quiet amber light.
+memory listens for the person at the keyboard.
+memory responds on your machine.
+memory responds without the cloud.
+memory responds in quiet amber light.
+memory responds for the person at the keyboard.
+memory learns slowly on your machine.
+memory learns slowly without the cloud.
+memory learns slowly in quiet amber light.
+memory learns slowly for the person at the keyboard.
+memory runs locally on your machine.
+memory runs locally without the cloud.
+memory runs locally in quiet amber light.
+memory runs locally for the person at the keyboard.
+memory stores notes on your machine.
+memory stores notes without the cloud.
+memory stores notes in quiet amber light.
+memory stores notes for the person at the keyboard.
+memory keeps time on your machine.
+memory keeps time without the cloud.
+memory keeps time in quiet amber light.
+memory keeps time for the person at the keyboard.
+memory computes sums on your machine.
+memory computes sums without the cloud.
+memory computes sums in quiet amber light.
+memory computes sums for the person at the keyboard.
+memory stays private on your machine.
+memory stays private without the cloud.
+memory stays private in quiet amber light.
+memory stays private for the person at the keyboard.
+memory glows softly on your machine.
+memory glows softly without the cloud.
+memory glows softly in quiet amber light.
+memory glows softly for the person at the keyboard.
+memory starts quickly on your machine.
+memory starts quickly without the cloud.
+memory starts quickly in quiet amber light.
+memory starts quickly for the person at the keyboard.
+the tool registry listens on your machine.
+the tool registry listens without the cloud.
+the tool registry listens in quiet amber light.
+the tool registry listens for the person at the keyboard.
+the tool registry responds on your machine.
+the tool registry responds without the cloud.
+the tool registry responds in quiet amber light.
+the tool registry responds for the person at the keyboard.
+the tool registry learns slowly on your machine.
+the tool registry learns slowly without the cloud.
+the tool registry learns slowly in quiet amber light.
+the tool registry learns slowly for the person at the keyboard.
+the tool registry runs locally on your machine.
+the tool registry runs locally without the cloud.
+the tool registry runs locally in quiet amber light.
+the tool registry runs locally for the person at the keyboard.
+the tool registry stores notes on your machine.
+the tool registry stores notes without the cloud.
+the tool registry stores notes in quiet amber light.
+the tool registry stores notes for the person at the keyboard.
+the tool registry keeps time on your machine.
+the tool registry keeps time without the cloud.
+the tool registry keeps time in quiet amber light.
+the tool registry keeps time for the person at the keyboard.
+the tool registry computes sums on your machine.
+the tool registry computes sums without the cloud.
+the tool registry computes sums in quiet amber light.
+the tool registry computes sums for the person at the keyboard.
+the tool registry stays private on your machine.
+the tool registry stays private without the cloud.
+the tool registry stays private in quiet amber light.
+the tool registry stays private for the person at the keyboard.
+the tool registry glows softly on your machine.
+the tool registry glows softly without the cloud.
+the tool registry glows softly in quiet amber light.
+the tool registry glows softly for the person at the keyboard.
+the tool registry starts quickly on your machine.
+the tool registry starts quickly without the cloud.
+the tool registry starts quickly in quiet amber light.
+the tool registry starts quickly for the person at the keyboard.
+the interface listens on your machine.
+the interface listens without the cloud.
+the interface listens in quiet amber light.
+the interface listens for the person at the keyboard.
+the interface responds on your machine.
+the interface responds without the cloud.
+the interface responds in quiet amber light.
+the interface responds for the person at the keyboard.
+the interface learns slowly on your machine.
+the interface learns slowly without the cloud.
+the interface learns slowly in quiet amber light.
+the interface learns slowly for the person at the keyboard.
+the interface runs locally on your machine.
+the interface runs locally without the cloud.
+the interface runs locally in quiet amber light.
+the interface runs locally for the person at the keyboard.
+the interface stores notes on your machine.
+the interface stores notes without the cloud.
+the interface stores notes in quiet amber light.
+the interface stores notes for the person at the keyboard.
+the interface keeps time on your machine.
+the interface keeps time without the cloud.
+the interface keeps time in quiet amber light.
+the interface keeps time for the person at the keyboard.
+the interface computes sums on your machine.
+the interface computes sums without the cloud.
+the interface computes sums in quiet amber light.
+the interface computes sums for the person at the keyboard.
+the interface stays private on your machine.
+the interface stays private without the cloud.
+the interface stays private in quiet amber light.
+the interface stays private for the person at the keyboard.
+the interface glows softly on your machine.
+the interface glows softly without the cloud.
+the interface glows softly in quiet amber light.
+the interface glows softly for the person at the keyboard.
+the interface starts quickly on your machine.
+the interface starts quickly without the cloud.
+the interface starts quickly in quiet amber light.
+the interface starts quickly for the person at the keyboard.
+the assistant listens on your machine.
+the assistant listens without the cloud.
+the assistant listens in quiet amber light.
+the assistant listens for the person at the keyboard.
+the assistant responds on your machine.
+the assistant responds without the cloud.
+the assistant responds in quiet amber light.
+the assistant responds for the person at the keyboard.
+the assistant learns slowly on your machine.
+the assistant learns slowly without the cloud.
+the assistant learns slowly in quiet amber light.
+the assistant learns slowly for the person at the keyboard.
+the assistant runs locally on your machine.
+the assistant runs locally without the cloud.
+the assistant runs locally in quiet amber light.
+the assistant runs locally for the person at the keyboard.
+the assistant stores notes on your machine.
+the assistant stores notes without the cloud.
+the assistant stores notes in quiet amber light.
+the assistant stores notes for the person at the keyboard.
+the assistant keeps time on your machine.
+the assistant keeps time without the cloud.
+the assistant keeps time in quiet amber light.
+the assistant keeps time for the person at the keyboard.
+the assistant computes sums on your machine.
+the assistant computes sums without the cloud.
+the assistant computes sums in quiet amber light.
+the assistant computes sums for the person at the keyboard.
+the assistant stays private on your machine.
+the assistant stays private without the cloud.
+the assistant stays private in quiet amber light.
+the assistant stays private for the person at the keyboard.
+the assistant glows softly on your machine.
+the assistant glows softly without the cloud.
+the assistant glows softly in quiet amber light.
+the assistant glows softly for the person at the keyboard.
+the assistant starts quickly on your machine.
+the assistant starts quickly without the cloud.
+the assistant starts quickly in quiet amber light.
+the assistant starts quickly for the person at the keyboard.
+the kernel listens on your machine.
+the kernel listens without the cloud.
+the kernel listens in quiet amber light.
+the kernel listens for the person at the keyboard.
+the kernel responds on your machine.
+the kernel responds without the cloud.
+the kernel responds in quiet amber light.
+the kernel responds for the person at the keyboard.
+the kernel learns slowly on your machine.
+the kernel learns slowly without the cloud.
+the kernel learns slowly in quiet amber light.
+the kernel learns slowly for the person at the keyboard.
+the kernel runs locally on your machine.
+the kernel runs locally without the cloud.
+the kernel runs locally in quiet amber light.
+the kernel runs locally for the person at the keyboard.
+the kernel stores notes on your machine.
+the kernel stores notes without the cloud.
+the kernel stores notes in quiet amber light.
+the kernel stores notes for the person at the keyboard.
+the kernel keeps time on your machine.
+the kernel keeps time without the cloud.
+the kernel keeps time in quiet amber light.
+the kernel keeps time for the person at the keyboard.
+the kernel computes sums on your machine.
+the kernel computes sums without the cloud.
+the kernel computes sums in quiet amber light.
+the kernel computes sums for the person at the keyboard.
+the kernel stays private on your machine.
+the kernel stays private without the cloud.
+the kernel stays private in quiet amber light.
+the kernel stays private for the person at the keyboard.
+the kernel glows softly on your machine.
+the kernel glows softly without the cloud.
+the kernel glows softly in quiet amber light.
+the kernel glows softly for the person at the keyboard.
+the kernel starts quickly on your machine.
+the kernel starts quickly without the cloud.
+the kernel starts quickly in quiet amber light.
+the kernel starts quickly for the person at the keyboard.
