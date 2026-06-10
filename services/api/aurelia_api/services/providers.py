@@ -44,6 +44,17 @@ class Provider(ABC):
     def available(self) -> bool:
         return True
 
+    # ---- tool selection capability -------------------------------------
+    # Providers that can reliably emit constrained JSON may override
+    # tool_decision to let the model route requests to tools. Returning
+    # None means "no decision" — the agent loop falls back to regex
+    # intent routing. The bundled echo/mini providers cannot produce
+    # structured output, so the default is None.
+    supports_tool_selection: bool = False
+
+    def tool_decision(self, message: str, tools: list[dict]) -> dict | None:
+        return None
+
 
 class RuleBasedProvider(Provider):
     name = "echo"
@@ -138,6 +149,56 @@ class OllamaProvider(Provider):
             return data.get("response", "(empty response from Ollama)")
         except Exception as e:
             return f"Ollama request failed: {e}. Is `ollama serve` running?"
+
+    supports_tool_selection = True
+
+    _DECISION_PROMPT = (
+        "You route a user request to at most one tool.\n"
+        "Available tools (name — description — args):\n{tools}\n\n"
+        "User message: {message}\n\n"
+        "Reply with ONLY a JSON object, no other text:\n"
+        '{{"tool": <tool name as string, or null>, "args": {{<arg name>: <value>}}}}\n'
+        "Rules: pick a tool ONLY if it directly accomplishes the request; "
+        "otherwise tool must be null. Use exact tool and arg names. "
+        "For calculator, args is {{\"expression\": <arithmetic string>}}."
+    )
+
+    def tool_decision(self, message: str, tools: list[dict]) -> dict | None:
+        """One constrained JSON decision pass at temperature 0.
+
+        Returns {"tool": str|None, "args": dict} or None on any failure —
+        the caller treats None as "fall back to regex routing", so a flaky
+        model can degrade quality but never availability.
+        """
+        tool_lines = "\n".join(
+            f"- {t['name']} — {t['description']} — args: {t['args']}"
+            for t in tools if t.get("enabled")
+        )
+        prompt = self._DECISION_PROMPT.format(tools=tool_lines, message=message)
+        body = json.dumps({
+            "model": self.model, "prompt": prompt, "stream": False,
+            "format": "json", "options": {"temperature": 0},
+        }).encode()
+        req = urllib.request.Request(
+            f"{self.base_url}/api/generate", data=body,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = json.loads(resp.read().decode())
+            decision = json.loads(data.get("response", ""))
+            if not isinstance(decision, dict):
+                return None
+            tool = decision.get("tool")
+            args = decision.get("args") or {}
+            if tool is not None and not isinstance(tool, str):
+                return None
+            if not isinstance(args, dict):
+                return None
+            return {"tool": tool, "args": args}
+        except Exception as e:
+            log.info("tool_decision unavailable/failed, falling back: %s", e)
+            return None
 
     def stream(self, prompt: str, history: list[dict] | None = None) -> Iterator[str]:
         """Native streaming: Ollama emits NDJSON, one object per token chunk;

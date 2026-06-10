@@ -30,7 +30,16 @@ origin; server binds localhost.
 A deterministic plan→act→respond turn. Tool routing is intent-based (regex
 detection of calculation/time/note intents) because the bundled models cannot
 emit reliable structured tool calls; the loop is provider-agnostic so
-LLM-driven function calling can replace routing without API changes.
+Routing is two-tier. Tier 1: LLM-driven tool selection — when the active
+provider supports constrained JSON (Ollama), a temperature-0 decision pass
+lets the model pick a tool and args, the registry executes it, and a second
+streaming pass composes the answer from the result. Tier 2: regex intent
+routing — the deterministic fallback for echo/mini and for any failed,
+malformed, unknown, or disabled selection. The ToolRegistry is the sole
+enforcement point: models request tools, the registry decides; a disabled
+shell tool stays disabled no matter what the model emits. Selection failures
+degrade routing quality, never availability. Disable with
+AURELIA_LLM_TOOL_SELECTION=false.
 
 ## Streaming (`/api/chat/stream`)
 True token-level SSE. The provider interface exposes `stream()`: the mini LLM
