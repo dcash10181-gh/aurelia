@@ -50,13 +50,31 @@ def _safe_eval(node: ast.AST) -> float:
     raise ValueError(f"Disallowed expression element: {type(node).__name__}")
 
 
+# Model-typical noise → arithmetic. LLMs talking about money or math emit
+# currency symbols, thousands separators, unicode operators, and superscripts;
+# normalizing these is input hygiene, NOT a relaxation of the safety model —
+# everything still goes through the AST allowlist afterwards.
+_CALC_NORMALIZE = str.maketrans({
+    "÷": "/", "×": "*", "−": "-", "–": "-", "^": "**",
+    "$": None, "€": None, "£": None, ",": None,
+    "²": "**2", "³": "**3",
+})
+
+
 def calculator(args: dict[str, Any]) -> str:
     expr = str(args.get("expression", "")).strip()
     if not expr:
         raise ValueError("Missing 'expression'")
     if len(expr) > 500:
         raise ValueError("Expression too long")
-    result = _safe_eval(ast.parse(expr, mode="eval"))
+    expr = expr.translate(_CALC_NORMALIZE).strip()
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        raise ValueError(
+            f"Not a plain arithmetic expression: {expr!r}. "
+            "Use only numbers and + - * / ( ), e.g. '200/4'.") from None
+    result = _safe_eval(tree)
     return str(result)
 
 
