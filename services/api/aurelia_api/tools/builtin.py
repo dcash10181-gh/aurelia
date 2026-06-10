@@ -164,6 +164,12 @@ class MemoryTools:
         tags = args.get("tags") or []
         if isinstance(tags, str):
             tags = [t.strip() for t in tags.split(",") if t.strip()]
+        # Idempotency: an agent loop (or an over-eager model) may request the
+        # same save twice with trivially different args. Exact-content match
+        # short-circuits instead of polluting recall with duplicates.
+        existing = self.db.search_memories(content, limit=3)
+        if any(h["content"] == content for h in existing):
+            return f"Already in memory: \u201c{content}\u201d (not saved again)"
         mem = self.db.create_memory(content, [str(t) for t in tags][:8])
         return f"Saved to memory: \u201c{mem['content']}\u201d"
 
