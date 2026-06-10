@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, Memory, ProviderInfo, Status, ToolInfo } from "../lib/api";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -19,12 +19,18 @@ export function SidePanel({
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memInput, setMemInput] = useState("");
   const [err, setErr] = useState(false);
+  // The polling interval's closure captures `provider` from the render it
+  // was created in (perpetually null), so reading the prop directly here
+  // would reset the user's selection to the default on every poll. The ref
+  // always reflects the latest value; only an unset selection is defaulted.
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
 
   async function refresh() {
     try {
       const [s, t, p, m] = await Promise.all([api.status(), api.tools(), api.providers(), api.memories()]);
       setStatus(s); setTools(t); setProviders(p); setMemories(m); setErr(false);
-      if (!provider) setProvider(s.default_provider);
+      if (!providerRef.current) setProvider(s.default_provider);
     } catch { setErr(true); }
   }
   useEffect(() => { refresh(); const t = setInterval(refresh, 8000); return () => clearInterval(t); },
