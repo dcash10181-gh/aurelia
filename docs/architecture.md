@@ -30,6 +30,17 @@ origin; server binds localhost.
 A deterministic plan→act→respond turn. Tool routing is intent-based (regex
 detection of calculation/time/note intents) because the bundled models cannot
 emit reliable structured tool calls; the loop is provider-agnostic so
+## Context injection (`agent/loop.py: build_context`)
+Every model turn carries context: a system message holding memories relevant
+to the current request (FTS5 BM25 recall in match-any mode, so filler words
+can't veto a match — distinct from the match-all precision mode used for
+explicit search) plus the last 12 conversation messages, each capped at 1200
+chars so one giant paste can't evict the rest. History is captured before the
+in-flight message is persisted, so context never echoes the current turn.
+Ollama consumes context natively via /api/chat messages; echo and mini ignore
+it harmlessly. A memory-recall failure degrades to no-context, never a failed
+turn.
+
 Routing is two-tier. Tier 1: LLM-driven tool selection — when the active
 provider supports constrained JSON (Ollama), a temperature-0 decision pass
 lets the model pick a tool and args, the registry executes it, and a second

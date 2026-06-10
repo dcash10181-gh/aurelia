@@ -118,7 +118,8 @@ class Database:
             ).fetchall()
         return [self._memory_out(dict(r)) for r in rows]
 
-    def search_memories(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
+    def search_memories(self, query: str, limit: int = 50,
+                        match_any: bool = False) -> list[dict[str, Any]]:
         """Full-text search over memory content and tags.
 
         Uses FTS5 with BM25 relevance ranking when available. User input is
@@ -126,12 +127,17 @@ class Database:
         double-quoted (neutralizing operators like NEAR/AND/-) and given a
         prefix wildcard, so "proj plan" matches "project planning". Falls
         back to LIKE on builds without FTS5 or for queries FTS5 rejects.
+
+        match_any=False (default): all terms must match — precision mode for
+        explicit user searches. match_any=True: any term may match, BM25
+        ranks — recall mode for injecting memories relevant to a natural-
+        language message, where filler words must not veto the match.
         """
         query = query.strip()
         if not query:
             return []
         if self.fts_enabled:
-            match = self._fts_query(query)
+            match = self._fts_query(query, match_any=match_any)
             try:
                 with self.connect() as conn:
                     rows = conn.execute(
@@ -147,11 +153,13 @@ class Database:
         return self._like_search(query, limit)
 
     @staticmethod
-    def _fts_query(query: str) -> str:
+    def _fts_query(query: str, match_any: bool = False) -> str:
         # Quote each token (escaping embedded quotes per FTS5 rules) and add
-        # a prefix wildcard. Tokens are ANDed: all terms must match.
+        # a prefix wildcard. AND = all terms must match (search precision);
+        # OR = any term may match, BM25 ranks (recall for natural language).
         tokens = [t.replace('"', '""') for t in query.split()]
-        return " AND ".join(f'"{t}"*' for t in tokens if t)
+        op = " OR " if match_any else " AND "
+        return op.join(f'"{t}"*' for t in tokens if t)
 
     def _like_search(self, query: str, limit: int) -> list[dict[str, Any]]:
         like = f"%{query}%"

@@ -137,16 +137,29 @@ class OllamaProvider(Provider):
         except Exception:
             return False
 
+    @staticmethod
+    def build_messages(prompt: str, history: list[dict] | None) -> list[dict]:
+        """Chat-format payload: context (system memories + prior turns) then
+        the current user message. Pure function — unit-tested directly."""
+        msgs = [{"role": m.get("role", "user"), "content": str(m.get("content", ""))}
+                for m in (history or [])]
+        msgs.append({"role": "user", "content": prompt})
+        return msgs
+
     def generate(self, prompt: str, history: list[dict] | None = None) -> str:
-        body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode()
+        # /api/chat (not /api/generate): the messages array is how history and
+        # the memory system-message actually reach the model.
+        body = json.dumps({"model": self.model, "stream": False,
+                           "messages": self.build_messages(prompt, history)}).encode()
         req = urllib.request.Request(
-            f"{self.base_url}/api/generate", data=body,
+            f"{self.base_url}/api/chat", data=body,
             headers={"Content-Type": "application/json"}, method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read().decode())
-            return data.get("response", "(empty response from Ollama)")
+            return (data.get("message") or {}).get("content",
+                                                   "(empty response from Ollama)")
         except Exception as e:
             return f"Ollama request failed: {e}. Is `ollama serve` running?"
 
@@ -203,9 +216,10 @@ class OllamaProvider(Provider):
     def stream(self, prompt: str, history: list[dict] | None = None) -> Iterator[str]:
         """Native streaming: Ollama emits NDJSON, one object per token chunk;
         forward each `response` fragment as it arrives over the wire."""
-        body = json.dumps({"model": self.model, "prompt": prompt, "stream": True}).encode()
+        body = json.dumps({"model": self.model, "stream": True,
+                           "messages": self.build_messages(prompt, history)}).encode()
         req = urllib.request.Request(
-            f"{self.base_url}/api/generate", data=body,
+            f"{self.base_url}/api/chat", data=body,
             headers={"Content-Type": "application/json"}, method="POST",
         )
         try:
@@ -215,7 +229,7 @@ class OllamaProvider(Provider):
                     if not line:
                         continue
                     obj = json.loads(line)
-                    piece = obj.get("response", "")
+                    piece = (obj.get("message") or {}).get("content", "")
                     if piece:
                         yield piece
                     if obj.get("done"):

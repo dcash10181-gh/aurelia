@@ -79,8 +79,12 @@ def status():
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     provider = _provider(req.provider)
+    # History is captured before the new user message is persisted, so the
+    # context contains prior turns only — not an echo of the current one.
+    history = [{"role": m["role"], "content": m["content"]}
+               for m in db.recent_messages(limit=12)]
     db.add_message("user", req.message)
-    result = run_agent_turn(req.message, provider, registry, db)
+    result = run_agent_turn(req.message, provider, registry, db, history)
     db.add_message("assistant", result["reply"])
     return result
 
@@ -95,6 +99,8 @@ def agent(req: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     provider = _provider(req.provider)
+    history = [{"role": m["role"], "content": m["content"]}
+               for m in db.recent_messages(limit=12)]
     db.add_message("user", req.message)
 
     async def gen():
@@ -103,7 +109,7 @@ async def chat_stream(req: ChatRequest):
         # pulls each item on a worker thread, so tokens flush to the client
         # the moment the model samples them.
         parts: list[str] = []
-        agent_iter = run_agent_turn_stream(req.message, provider, registry)
+        agent_iter = run_agent_turn_stream(req.message, provider, registry, db, history)
         async for frame in iterate_in_threadpool(agent_iter):
             if "token" in frame:
                 parts.append(frame["token"])
