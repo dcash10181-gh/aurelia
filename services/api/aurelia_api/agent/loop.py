@@ -29,6 +29,44 @@ _NOTE_RE = re.compile(r"^(?:save|write)\s+(?:a\s+)?note\s+(?P<name>[\w\- ]+):\s*
                       re.I | re.S)
 
 
+# Context budget: enough history for coherent multi-turn dialogue without
+# blowing small local context windows. Each message is also length-capped so
+# one giant paste can't evict everything else.
+_MAX_HISTORY_MSGS = 12
+_MAX_MSG_CHARS = 1200
+_MAX_MEMORIES = 5
+
+
+def build_context(message: str, memory=None,
+                  history: list[dict] | None = None) -> list[dict]:
+    """Assemble the provider-facing context for one turn.
+
+    Returns chat-format messages: an optional leading system message carrying
+    memories relevant to the current request (FTS5 BM25 search over saved
+    memories), followed by recent conversation history. Providers that cannot
+    use context (echo, mini) simply ignore it — injection never breaks them.
+    """
+    ctx: list[dict] = []
+    if memory is not None:
+        try:
+            hits = memory.search_memories(message, limit=_MAX_MEMORIES, match_any=True)
+        except Exception as e:  # a memory failure must never kill a turn
+            log.warning("memory recall failed: %s", e)
+            hits = []
+        if hits:
+            lines = "\n".join(f"- {h['content']}" for h in hits)
+            ctx.append({
+                "role": "system",
+                "content": ("Relevant saved memories about this user (use them "
+                            "when they apply; do not recite them unprompted):\n"
+                            + lines),
+            })
+    for m in (history or [])[-_MAX_HISTORY_MSGS:]:
+        content = str(m.get("content", ""))[:_MAX_MSG_CHARS]
+        ctx.append({"role": m.get("role", "user"), "content": content})
+    return ctx
+
+
 def _llm_select_tool(message: str, provider: Provider,
                      tools: ToolRegistry) -> dict[str, Any] | None:
     """Ask a capable provider to route the request. Returns a validated
@@ -76,7 +114,7 @@ def _llm_tool_turn(message: str, provider: Provider,
 
 def run_agent_turn(
     message: str, provider: Provider, tools: ToolRegistry, memory=None,
-    use_llm_selection: bool = True,
+    history: list[dict] | None = None, use_llm_selection: bool = True,
 ) -> dict[str, Any]:
     """One agent turn. Returns {reply, provider, tool_calls}.
 
@@ -85,11 +123,12 @@ def run_agent_turn(
     so a turn never pays for two decision calls.
     """
     tool_calls: list[dict] = []
+    ctx = build_context(message, memory, history)
 
     llm_call = _llm_tool_turn(message, provider, tools) if use_llm_selection else None
     if llm_call is not None:
         reply = provider.generate(
-            _compose_prompt(message, llm_call["tool"], llm_call["result"]))
+            _compose_prompt(message, llm_call["tool"], llm_call["result"]), ctx)
         return {"reply": reply, "provider": f"{provider.name}+{llm_call['tool']}",
                 "tool_calls": [llm_call]}
 
@@ -121,12 +160,13 @@ def run_agent_turn(
             return {"reply": f"Couldn't save that note: {e}", "provider": "agent+notes",
                     "tool_calls": tool_calls}
 
-    # No tool intent → defer to the model provider.
-    reply = provider.generate(message)
+    # No tool intent → defer to the model provider, with context.
+    reply = provider.generate(message, ctx)
     return {"reply": reply, "provider": provider.name, "tool_calls": tool_calls}
 
 
-def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry):
+def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry,
+                          memory=None, history: list[dict] | None = None):
     """Streaming agent turn: yields {'token': str} frames, then one
     {'meta': {...}} frame.
 
@@ -136,17 +176,20 @@ def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry)
     adds latency without value. Model-routed turns stream provider tokens
     as they are produced.
     """
+    ctx = build_context(message, memory, history)
+
     llm_call = _llm_tool_turn(message, provider, tools)
     if llm_call is not None:
         # Stream the model composing the answer from the tool result.
         for piece in provider.stream(
-                _compose_prompt(message, llm_call["tool"], llm_call["result"])):
+                _compose_prompt(message, llm_call["tool"], llm_call["result"]), ctx):
             yield {"token": piece}
         yield {"meta": {"provider": f"{provider.name}+{llm_call['tool']}",
                         "tool_calls": [llm_call]}}
         return
 
-    probe = (run_agent_turn(message, provider, tools, use_llm_selection=False)
+    probe = (run_agent_turn(message, provider, tools, memory, history,
+                            use_llm_selection=False)
              if _has_tool_intent(message) else None)
     if probe is not None:
         if probe["tool_calls"]:
@@ -161,7 +204,7 @@ def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry)
         yield {"meta": {"provider": probe["provider"], "tool_calls": probe["tool_calls"]}}
         return
 
-    for piece in provider.stream(message):
+    for piece in provider.stream(message, ctx):
         yield {"token": piece}
     yield {"meta": {"provider": provider.name, "tool_calls": []}}
 

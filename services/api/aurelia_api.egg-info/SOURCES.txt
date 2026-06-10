@@ -20,8 +20,10 @@ aurelia_api/storage/db.py
 aurelia_api/tools/__init__.py
 aurelia_api/tools/base.py
 aurelia_api/tools/builtin.py
+tests/test_context_injection.py
 tests/test_fts_search.py
 tests/test_health.py
+tests/test_llm_tool_selection.py
 tests/test_memory.py
 tests/test_streaming.py
 tests/test_tools.py
