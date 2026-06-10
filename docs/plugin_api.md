@@ -47,3 +47,11 @@ def test_weather_tool(client):
 To let natural language trigger your tool, add an intent pattern in
 `agent/loop.py`. Keep patterns conservative — false positives are worse than
 falling through to the model provider.
+
+## Built-in memory tools
+`memory.save` and `memory.search` are registered when the API wires its
+database into the registry. They are the agent's handles on the same durable
+store the UI Memory panel uses — agent-saved memories are visible, FTS5-
+searchable, and deletable by the user. The model is instructed to persist
+only on explicit user request; the registry validates content length and
+non-emptiness regardless of what the model sends.
