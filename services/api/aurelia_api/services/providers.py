@@ -182,7 +182,8 @@ class OllamaProvider(Provider):
         "- Never invent or choose values on the user's behalf and persist "
         "them; persist only what the user stated.\n"
         "- Use exact tool and arg names. For calculator, args is "
-        '{{"expression": <arithmetic string>}}.\n'
+        '{{"expression": <plain arithmetic, digits and + - * / ( ) only — '
+        'no currency symbols, no words, e.g. "200/4"}}.\n'
         "Examples:\n"
         'User: "remember my dog is Biscuit" -> {{"tool": "memory.save", '
         '"args": {{"content": "User\'s dog is named Biscuit"}}}}\n'
@@ -200,7 +201,9 @@ class OllamaProvider(Provider):
         return ("\n\nResults from tools you already called this turn:\n"
                 + lines +
                 "\nIf these results are sufficient to answer the user, "
-                "tool MUST be null. Only call another tool if more "
+                "tool MUST be null. If a result is an ERROR, you may retry "
+                "that tool ONCE with corrected args (follow any hint in the "
+                "error message); otherwise only call another tool if more "
                 "information is genuinely required.")
 
     def tool_decision(self, message: str, tools: list[dict],
