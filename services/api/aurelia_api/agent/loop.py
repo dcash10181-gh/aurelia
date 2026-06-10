@@ -1,10 +1,16 @@
-"""Agent loop: a deterministic plan→act→respond cycle.
+"""Agent loop: plan→act→respond.
 
-Architectural decision: tool routing is intent-based (pattern detection) rather
-than LLM-function-calling, because the bundled models (rule-based fallback and
-the educational mini LLM) cannot reliably emit structured tool calls. The loop
-is provider-agnostic, so when a capable model (e.g. via Ollama) is configured,
-LLM-driven tool selection can be layered in without changing the API surface.
+Routing has two tiers:
+1. LLM-driven tool selection — when the active provider supports constrained
+   JSON output (Ollama), the model itself decides which tool to call via a
+   temperature-0 decision pass, then composes the final answer from the tool
+   result. The ToolRegistry remains the sole enforcement point: the model can
+   only *request* tools; disabled tools (e.g. shell) still raise.
+2. Regex intent routing — the deterministic fallback, used for the bundled
+   echo/mini providers (which cannot emit structured output) and whenever the
+   LLM decision pass fails, returns malformed JSON, or names an unknown or
+   disabled tool. Selection can never reduce availability, only improve
+   routing quality.
 """
 from __future__ import annotations
 
@@ -23,11 +29,69 @@ _NOTE_RE = re.compile(r"^(?:save|write)\s+(?:a\s+)?note\s+(?P<name>[\w\- ]+):\s*
                       re.I | re.S)
 
 
+def _llm_select_tool(message: str, provider: Provider,
+                     tools: ToolRegistry) -> dict[str, Any] | None:
+    """Ask a capable provider to route the request. Returns a validated
+    {"tool": name, "args": dict} for an actionable selection, or None
+    (no capability, declined, malformed, unknown tool, ...) → regex fallback.
+    """
+    if not getattr(provider, "supports_tool_selection", False):
+        return None
+    from ..config import settings  # late import: tests monkeypatch settings
+    if not settings.llm_tool_selection:
+        return None
+    decision = provider.tool_decision(message, tools.list())
+    if not decision or not decision.get("tool"):
+        return None
+    name = decision["tool"]
+    known = {t["name"] for t in tools.list()}
+    if name not in known:
+        log.info("LLM selected unknown tool %r; falling back to regex", name)
+        return None
+    return {"tool": name, "args": decision.get("args") or {}}
+
+
+def _compose_prompt(message: str, tool: str, result: str) -> str:
+    return (f"The user asked: {message}\n"
+            f"You called the tool '{tool}' and it returned: {result}\n"
+            "Answer the user concisely using this result. Do not mention "
+            "internal tooling unless they asked about it.")
+
+
+def _llm_tool_turn(message: str, provider: Provider,
+                   tools: ToolRegistry) -> dict[str, Any] | None:
+    """Execute an LLM-selected tool call. None → caller uses regex path."""
+    sel = _llm_select_tool(message, provider, tools)
+    if sel is None:
+        return None
+    try:
+        result = tools.invoke(sel["tool"], sel["args"])
+    except Exception as e:
+        # Disabled tool (PermissionError), bad args, handler error: the
+        # model's choice failed — degrade to regex routing, never crash.
+        log.info("LLM-selected tool %r failed (%s); falling back", sel["tool"], e)
+        return None
+    return {"tool": sel["tool"], "args": sel["args"], "result": result}
+
+
 def run_agent_turn(
-    message: str, provider: Provider, tools: ToolRegistry, memory=None
+    message: str, provider: Provider, tools: ToolRegistry, memory=None,
+    use_llm_selection: bool = True,
 ) -> dict[str, Any]:
-    """One agent turn. Returns {reply, provider, tool_calls}."""
+    """One agent turn. Returns {reply, provider, tool_calls}.
+
+    use_llm_selection=False skips the LLM decision pass — used by the
+    streaming path when it has already run (and been declined) once,
+    so a turn never pays for two decision calls.
+    """
     tool_calls: list[dict] = []
+
+    llm_call = _llm_tool_turn(message, provider, tools) if use_llm_selection else None
+    if llm_call is not None:
+        reply = provider.generate(
+            _compose_prompt(message, llm_call["tool"], llm_call["result"]))
+        return {"reply": reply, "provider": f"{provider.name}+{llm_call['tool']}",
+                "tool_calls": [llm_call]}
 
     m = _CALC_RE.search(message.strip())
     if m:
@@ -72,7 +136,18 @@ def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry)
     adds latency without value. Model-routed turns stream provider tokens
     as they are produced.
     """
-    probe = run_agent_turn(message, provider, tools) if _has_tool_intent(message) else None
+    llm_call = _llm_tool_turn(message, provider, tools)
+    if llm_call is not None:
+        # Stream the model composing the answer from the tool result.
+        for piece in provider.stream(
+                _compose_prompt(message, llm_call["tool"], llm_call["result"])):
+            yield {"token": piece}
+        yield {"meta": {"provider": f"{provider.name}+{llm_call['tool']}",
+                        "tool_calls": [llm_call]}}
+        return
+
+    probe = (run_agent_turn(message, provider, tools, use_llm_selection=False)
+             if _has_tool_intent(message) else None)
     if probe is not None:
         if probe["tool_calls"]:
             # Atomic tool result: one frame.

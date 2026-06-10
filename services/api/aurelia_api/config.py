@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     db_filename: str = "aurelia.db"
     # SECURITY: shell tool is off unless the user explicitly opts in.
     enable_shell_tool: bool = False
+    # LLM-driven tool selection: when a capable provider (Ollama) handles the
+    # turn, the model itself decides which tool to call via a constrained
+    # JSON decision pass. Regex routing remains the fallback. Set
+    # AURELIA_LLM_TOOL_SELECTION=false to force regex-only routing.
+    llm_tool_selection: bool = True
     # Default model provider: "mini" (from-scratch tiny LLM, if trained),
     # "echo" (rule-based fallback), or "ollama" (optional external runtime).
     default_provider: str = "echo"
