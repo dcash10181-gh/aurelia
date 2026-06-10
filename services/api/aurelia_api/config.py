@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # JSON decision pass. Regex routing remains the fallback. Set
     # AURELIA_LLM_TOOL_SELECTION=false to force regex-only routing.
     llm_tool_selection: bool = True
+    # Hard cap on tool calls per turn for the ReAct loop. Guards against
+    # runaway agent loops; identical repeated calls break out earlier.
+    agent_max_steps: int = 5
     # Default model provider: "mini" (from-scratch tiny LLM, if trained),
     # "echo" (rule-based fallback), or "ollama" (optional external runtime).
     default_provider: str = "echo"

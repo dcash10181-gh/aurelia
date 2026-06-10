@@ -25,3 +25,11 @@ describe("parseSseFrame meta + done", () => {
     expect(parseSseFrame("data: not-json")).toEqual({});
   });
 });
+
+describe("parseSseFrame tool events", () => {
+  it("parses tool_event frames", () => {
+    const f = parseSseFrame('data: {"tool_event":{"tool":"calculator","args":{},"result":"4"}}');
+    expect(f.toolEvent?.tool).toBe("calculator");
+    expect(f.toolEvent?.result).toBe("4");
+  });
+});
