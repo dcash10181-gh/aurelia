@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Near-term
+- ~~ReAct multi-step agent loop~~ — shipped: decide→act→observe chaining with step cap, stuck-loop detection, error-observations, live tool_event streaming to the UI.
 - ~~SQLite FTS5 for memory search (replace LIKE)~~ — shipped: BM25-ranked FTS5 with prefix matching, sync triggers, auto-migration, LIKE fallback.
 - ~~True token streaming from providers through the existing SSE contract~~ — shipped: per-token SSE from mini LLM, NDJSON pass-through for Ollama, chunked fallback for rule-based; frontend renders incrementally.
 - ~~LLM-driven tool selection when a capable provider (Ollama) is configured~~ — shipped: temperature-0 JSON decision pass, registry-enforced execution, streamed answer composition, regex fallback.

@@ -42,12 +42,13 @@ export interface StreamMeta { provider: string; tool_calls: ToolCall[] }
 /** Parse one SSE frame from /api/chat/stream. Exported for unit tests. */
 export function parseSseFrame(
   frame: string,
-): { token?: string; meta?: StreamMeta; done?: boolean } {
+): { token?: string; meta?: StreamMeta; toolEvent?: ToolCall; done?: boolean } {
   const data = frame.replace(/^data:\s*/, "").trim();
   if (data === "[DONE]") return { done: true };
   try {
     const obj = JSON.parse(data);
     if (obj.meta) return { meta: obj.meta as StreamMeta };
+    if (obj.tool_event) return { toolEvent: obj.tool_event as ToolCall };
     if (typeof obj.token === "string") return { token: obj.token };
     return {};
   } catch {
@@ -65,6 +66,7 @@ export async function chatStream(
   message: string,
   provider: string | null,
   onToken: (t: string) => void,
+  onEvent?: (e: ToolCall) => void,
 ): Promise<StreamMeta> {
   const res = await fetch("/api/chat/stream", {
     method: "POST",
@@ -88,6 +90,7 @@ export async function chatStream(
       buffer = buffer.slice(sep + 2);
       const parsed = parseSseFrame(frame);
       if (parsed.token !== undefined) onToken(parsed.token);
+      if (parsed.toolEvent && onEvent) onEvent(parsed.toolEvent);
       if (parsed.meta) meta = parsed.meta;
       if (parsed.done) return meta;
     }

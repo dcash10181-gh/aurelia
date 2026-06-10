@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { chatStream } from "../lib/api";
+import { chatStream, ToolCall } from "../lib/api";
 import { Halo } from "./Halo";
 
-interface Msg { role: "user" | "assistant"; content: string; meta?: string }
+interface Msg { role: "user" | "assistant"; content: string; meta?: string; steps?: ToolCall[] }
 
 export function Chat({ provider, onToolUse }: { provider: string | null; onToolUse: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -24,13 +24,24 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
       // updater always rewrites the LAST message, so concurrent renders stay
       // consistent without tracking an index.
       setMsgs((m) => [...m, { role: "assistant", content: "", meta: undefined }]);
-      const meta = await chatStream(text, provider, (t) =>
-        setMsgs((m) => {
-          const next = m.slice();
-          const last = next[next.length - 1];
-          next[next.length - 1] = { ...last, content: last.content + t };
-          return next;
-        }),
+      const meta = await chatStream(
+        text, provider,
+        (t) =>
+          setMsgs((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + t };
+            return next;
+          }),
+        (ev) => {
+          setState("tool");
+          setMsgs((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, steps: [...(last.steps ?? []), ev] };
+            return next;
+          });
+        },
       );
       if (meta.tool_calls.length) { setState("tool"); onToolUse(); }
       setMsgs((m) => {
@@ -76,6 +87,13 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
         )}
         {msgs.map((m, i) => (
           <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
+            {m.steps && m.steps.length > 0 && (
+              <ul className="text-[10px] font-mono text-teal/80 mb-1 space-y-0.5">
+                {m.steps.map((s2, j) => (
+                  <li key={j}>⚙ {s2.tool} → {String(s2.result).slice(0, 60)}</li>
+                ))}
+              </ul>
+            )}
             <div className={
               "inline-block max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap " +
               (m.role === "user" ? "bg-panel border border-line" : "bg-well border border-bronze/30")

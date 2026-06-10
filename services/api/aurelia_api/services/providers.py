@@ -52,7 +52,8 @@ class Provider(ABC):
     # structured output, so the default is None.
     supports_tool_selection: bool = False
 
-    def tool_decision(self, message: str, tools: list[dict]) -> dict | None:
+    def tool_decision(self, message: str, tools: list[dict],
+                      observations: list[dict] | None = None) -> dict | None:
         return None
 
 
@@ -186,9 +187,24 @@ class OllamaProvider(Provider):
         'User: "remember my dog is Biscuit" -> {{"tool": "memory.save", '
         '"args": {{"content": "User\'s dog is named Biscuit"}}}}\n'
         'User: "suggest a name for my cat" -> {{"tool": null, "args": {{}}}}'
+        "{observations}"
     )
 
-    def tool_decision(self, message: str, tools: list[dict]) -> dict | None:
+    @staticmethod
+    def _format_observations(observations: list[dict] | None) -> str:
+        if not observations:
+            return ""
+        lines = "\n".join(
+            f"{i + 1}. {o['tool']}({json.dumps(o['args'])}) -> {o['result']}"
+            for i, o in enumerate(observations))
+        return ("\n\nResults from tools you already called this turn:\n"
+                + lines +
+                "\nIf these results are sufficient to answer the user, "
+                "tool MUST be null. Only call another tool if more "
+                "information is genuinely required.")
+
+    def tool_decision(self, message: str, tools: list[dict],
+                      observations: list[dict] | None = None) -> dict | None:
         """One constrained JSON decision pass at temperature 0.
 
         Returns {"tool": str|None, "args": dict} or None on any failure —
@@ -199,7 +215,9 @@ class OllamaProvider(Provider):
             f"- {t['name']} — {t['description']} — args: {t['args']}"
             for t in tools if t.get("enabled")
         )
-        prompt = self._DECISION_PROMPT.format(tools=tool_lines, message=message)
+        prompt = self._DECISION_PROMPT.format(
+            tools=tool_lines, message=message,
+            observations=self._format_observations(observations))
         body = json.dumps({
             "model": self.model, "prompt": prompt, "stream": False,
             "format": "json", "options": {"temperature": 0},

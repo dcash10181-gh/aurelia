@@ -41,10 +41,17 @@ Ollama consumes context natively via /api/chat messages; echo and mini ignore
 it harmlessly. A memory-recall failure degrades to no-context, never a failed
 turn.
 
-Routing is two-tier. Tier 1: LLM-driven tool selection — when the active
-provider supports constrained JSON (Ollama), a temperature-0 decision pass
-lets the model pick a tool and args, the registry executes it, and a second
-streaming pass composes the answer from the result. Tier 2: regex intent
+Routing is two-tier. Tier 1: a ReAct loop — when the active provider
+supports constrained JSON (Ollama), the agent runs decide→act→observe:
+a temperature-0 decision pass picks a tool, the registry executes it, the
+result is fed back into the next decision pass, and the loop continues until
+the model declines (results sufficient) or a guard fires. Guards: a hard step
+cap (AURELIA_AGENT_MAX_STEPS, default 5) and identical-call detection (a
+deterministic model re-requesting the same tool+args is stuck). Tool errors —
+including the registry refusing a disabled tool — become ERROR observations
+the model can adapt to, visible in the transcript rather than hidden. Each
+act/observe step streams to the UI as a tool_event frame; the final answer is
+composed from all observations and token-streamed. Tier 2: regex intent
 routing — the deterministic fallback for echo/mini and for any failed,
 malformed, unknown, or disabled selection. The ToolRegistry is the sole
 enforcement point: models request tools, the registry decides; a disabled

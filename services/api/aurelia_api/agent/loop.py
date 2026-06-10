@@ -14,6 +14,7 @@ Routing has two tiers:
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any
@@ -67,49 +68,75 @@ def build_context(message: str, memory=None,
     return ctx
 
 
-def _llm_select_tool(message: str, provider: Provider,
-                     tools: ToolRegistry) -> dict[str, Any] | None:
-    """Ask a capable provider to route the request. Returns a validated
-    {"tool": name, "args": dict} for an actionable selection, or None
-    (no capability, declined, malformed, unknown tool, ...) → regex fallback.
+def _llm_select_tool(message: str, provider: Provider, tools: ToolRegistry,
+                     observations: list[dict] | None = None) -> dict[str, Any] | None:
+    """Ask a capable provider to route the request (one ReAct step). Returns
+    a validated {"tool": name, "args": dict}, or None (no capability,
+    declined, malformed, unknown tool) → the loop stops.
     """
     if not getattr(provider, "supports_tool_selection", False):
         return None
     from ..config import settings  # late import: tests monkeypatch settings
     if not settings.llm_tool_selection:
         return None
-    decision = provider.tool_decision(message, tools.list())
+    decision = provider.tool_decision(message, tools.list(), observations)
     if not decision or not decision.get("tool"):
         return None
     name = decision["tool"]
     known = {t["name"] for t in tools.list()}
     if name not in known:
-        log.info("LLM selected unknown tool %r; falling back to regex", name)
+        log.info("LLM selected unknown tool %r; stopping loop", name)
         return None
     return {"tool": name, "args": decision.get("args") or {}}
 
 
-def _compose_prompt(message: str, tool: str, result: str) -> str:
+def _react_steps(message: str, provider: Provider, tools: ToolRegistry):
+    """The ReAct core: decide → act → observe, repeated.
+
+    Yields one observation dict per executed tool call. Guards:
+    * settings.agent_max_steps hard-caps iterations;
+    * an identical (tool, args) repeat breaks the loop — a deterministic
+      temperature-0 model that re-requests the same call is stuck;
+    * tool errors (including PermissionError from disabled tools) become
+      ERROR observations rather than exceptions, so the model can adapt
+      course and the registry's refusals stay visible in the transcript.
+    """
+    from ..config import settings
+    observations: list[dict] = []
+    seen: set[tuple] = set()
+    for _ in range(max(1, settings.agent_max_steps)):
+        sel = _llm_select_tool(message, provider, tools, observations)
+        if sel is None:
+            return
+        key = (sel["tool"], json.dumps(sel["args"], sort_keys=True, default=str))
+        if key in seen:
+            log.info("ReAct loop repeated %s with identical args; breaking", sel["tool"])
+            return
+        seen.add(key)
+        try:
+            result = tools.invoke(sel["tool"], sel["args"])
+        except Exception as e:
+            result = f"ERROR: {e}"
+        obs = {"tool": sel["tool"], "args": sel["args"], "result": result}
+        observations.append(obs)
+        yield obs
+
+
+def _compose_react_prompt(message: str, observations: list[dict]) -> str:
+    lines = "\n".join(
+        f"{i + 1}. {o['tool']}({json.dumps(o['args'], default=str)}) -> {o['result']}"
+        for i, o in enumerate(observations))
     return (f"The user asked: {message}\n"
-            f"You called the tool '{tool}' and it returned: {result}\n"
-            "Answer the user concisely using this result. Do not mention "
-            "internal tooling unless they asked about it.")
+            f"You called these tools:\n{lines}\n"
+            "Answer the user concisely using these results. If a tool "
+            "returned an ERROR, work around it or say plainly what could "
+            "not be done. Do not mention internal tooling unless they "
+            "asked about it.")
 
 
-def _llm_tool_turn(message: str, provider: Provider,
-                   tools: ToolRegistry) -> dict[str, Any] | None:
-    """Execute an LLM-selected tool call. None → caller uses regex path."""
-    sel = _llm_select_tool(message, provider, tools)
-    if sel is None:
-        return None
-    try:
-        result = tools.invoke(sel["tool"], sel["args"])
-    except Exception as e:
-        # Disabled tool (PermissionError), bad args, handler error: the
-        # model's choice failed — degrade to regex routing, never crash.
-        log.info("LLM-selected tool %r failed (%s); falling back", sel["tool"], e)
-        return None
-    return {"tool": sel["tool"], "args": sel["args"], "result": result}
+def _provider_tag(provider: Provider, observations: list[dict]) -> str:
+    tools_used = list(dict.fromkeys(o["tool"] for o in observations))
+    return f"{provider.name}+{'+'.join(tools_used)}"
 
 
 def run_agent_turn(
@@ -125,12 +152,14 @@ def run_agent_turn(
     tool_calls: list[dict] = []
     ctx = build_context(message, memory, history)
 
-    llm_call = _llm_tool_turn(message, provider, tools) if use_llm_selection else None
-    if llm_call is not None:
-        reply = provider.generate(
-            _compose_prompt(message, llm_call["tool"], llm_call["result"]), ctx)
-        return {"reply": reply, "provider": f"{provider.name}+{llm_call['tool']}",
-                "tool_calls": [llm_call]}
+    if use_llm_selection:
+        observations = list(_react_steps(message, provider, tools))
+        if observations:
+            reply = provider.generate(
+                _compose_react_prompt(message, observations), ctx)
+            return {"reply": reply,
+                    "provider": _provider_tag(provider, observations),
+                    "tool_calls": observations}
 
     m = _CALC_RE.search(message.strip())
     if m:
@@ -178,14 +207,17 @@ def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry,
     """
     ctx = build_context(message, memory, history)
 
-    llm_call = _llm_tool_turn(message, provider, tools)
-    if llm_call is not None:
-        # Stream the model composing the answer from the tool result.
+    observations: list[dict] = []
+    for obs in _react_steps(message, provider, tools):
+        observations.append(obs)
+        # Surface each act/observe step live so the UI can show progress.
+        yield {"tool_event": obs}
+    if observations:
         for piece in provider.stream(
-                _compose_prompt(message, llm_call["tool"], llm_call["result"]), ctx):
+                _compose_react_prompt(message, observations), ctx):
             yield {"token": piece}
-        yield {"meta": {"provider": f"{provider.name}+{llm_call['tool']}",
-                        "tool_calls": [llm_call]}}
+        yield {"meta": {"provider": _provider_tag(provider, observations),
+                        "tool_calls": observations}}
         return
 
     probe = (run_agent_turn(message, provider, tools, memory, history,
