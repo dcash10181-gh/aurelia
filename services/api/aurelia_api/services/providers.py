@@ -171,9 +171,21 @@ class OllamaProvider(Provider):
         "User message: {message}\n\n"
         "Reply with ONLY a JSON object, no other text:\n"
         '{{"tool": <tool name as string, or null>, "args": {{<arg name>: <value>}}}}\n'
-        "Rules: pick a tool ONLY if it directly accomplishes the request; "
-        "otherwise tool must be null. Use exact tool and arg names. "
-        "For calculator, args is {{\"expression\": <arithmetic string>}}."
+        "Rules:\n"
+        "- Choose a tool ONLY if the request explicitly requires it; "
+        "if no tool is clearly required, tool MUST be null.\n"
+        "- Tools that persist data (notes.write, memory.save) may be used "
+        "ONLY when the user explicitly asks to save, remember, record, or "
+        "note something. NEVER persist when the user asks for ideas, "
+        "suggestions, names, or options — answering with text needs no tool.\n"
+        "- Never invent or choose values on the user's behalf and persist "
+        "them; persist only what the user stated.\n"
+        "- Use exact tool and arg names. For calculator, args is "
+        '{{"expression": <arithmetic string>}}.\n'
+        "Examples:\n"
+        'User: "remember my dog is Biscuit" -> {{"tool": "memory.save", '
+        '"args": {{"content": "User\'s dog is named Biscuit"}}}}\n'
+        'User: "suggest a name for my cat" -> {{"tool": null, "args": {{}}}}'
     )
 
     def tool_decision(self, message: str, tools: list[dict]) -> dict | None:

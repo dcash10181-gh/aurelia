@@ -125,7 +125,42 @@ def make_shell_tool(enabled: bool) -> Tool:
     )
 
 
-def build_default_registry(data_dir: str | Path, enable_shell: bool = False) -> ToolRegistry:
+class MemoryTools:
+    """Agent-facing handles on the durable memory store.
+
+    Architectural decision: the model gets memory as *tools*, not magic —
+    saves and searches go through the same Database (and the same FTS5
+    index) as the UI's Memory panel, so anything the agent remembers is
+    visible, searchable, and deletable by the user. No hidden state.
+    """
+
+    def __init__(self, db):
+        self.db = db
+
+    def save(self, args: dict[str, Any]) -> str:
+        content = str(args.get("content", "")).strip()
+        if not content:
+            raise ValueError("memory.save requires non-empty 'content'")
+        if len(content) > 2000:
+            raise ValueError("memory content too long (max 2000 chars)")
+        tags = args.get("tags") or []
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",") if t.strip()]
+        mem = self.db.create_memory(content, [str(t) for t in tags][:8])
+        return f"Saved to memory: \u201c{mem['content']}\u201d"
+
+    def search(self, args: dict[str, Any]) -> str:
+        query = str(args.get("query", "")).strip()
+        if not query:
+            raise ValueError("memory.search requires 'query'")
+        hits = self.db.search_memories(query, limit=5, match_any=True)
+        if not hits:
+            return "No saved memories match that query."
+        return "\n".join(f"- {h['content']}" for h in hits)
+
+
+def build_default_registry(data_dir: str | Path, enable_shell: bool = False,
+                           db=None) -> ToolRegistry:
     reg = ToolRegistry()
     notes = NotesTool(data_dir)
     reg.register(Tool("calculator", "Evaluate an arithmetic expression safely.",
@@ -136,5 +171,16 @@ def build_default_registry(data_dir: str | Path, enable_shell: bool = False) -> 
                       notes.write, {"name": "string", "content": "string"}))
     reg.register(Tool("notes.read", "Read a saved note.", notes.read, {"name": "string"}))
     reg.register(Tool("notes.list", "List saved notes.", notes.list, {}))
+    if db is not None:
+        mem = MemoryTools(db)
+        reg.register(Tool(
+            "memory.save",
+            "Save a durable fact about the user for future conversations. "
+            "Use ONLY when the user explicitly asks to remember/save something.",
+            mem.save, {"content": "string", "tags": "string (comma-separated, optional)"}))
+        reg.register(Tool(
+            "memory.search",
+            "Search the user's saved long-term memories.",
+            mem.search, {"query": "string"}))
     reg.register(make_shell_tool(enabled=enable_shell))
     return reg
