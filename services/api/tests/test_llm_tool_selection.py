@@ -23,7 +23,7 @@ class ScriptedProvider(Provider):
         self.generate_calls = 0
         self.last_prompt = None
 
-    def tool_decision(self, message, tools, observations=None):
+    def tool_decision(self, message, tools, observations=None, memories=None):
         self.decision_calls += 1
         return self.decision
 
