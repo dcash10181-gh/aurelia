@@ -184,9 +184,14 @@ class OllamaProvider(Provider):
         "- Use exact tool and arg names. For calculator, args is "
         '{{"expression": <plain arithmetic, digits and + - * / ( ) only — '
         'no currency symbols, no words, e.g. "200/4"}}.\n'
+        "- Questions about the user's own saved facts, preferences, or "
+        "past statements (\"what is my...\", \"do I have...\") -> "
+        "memory.search FIRST; never the calculator.\n"
         "Examples:\n"
         'User: "remember my dog is Biscuit" -> {{"tool": "memory.save", '
         '"args": {{"content": "User\'s dog is named Biscuit"}}}}\n'
+        'User: "what is my dog\'s name?" -> {{"tool": "memory.search", '
+        '"args": {{"query": "dog name"}}}}\n'
         'User: "suggest a name for my cat" -> {{"tool": null, "args": {{}}}}'
         "{observations}"
     )

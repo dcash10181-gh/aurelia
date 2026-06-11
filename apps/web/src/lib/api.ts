@@ -62,6 +62,10 @@ export function parseSseFrame(
  * Frames are buffered on the SSE delimiter (\n\n) because network reads can
  * split or coalesce frames arbitrarily.
  */
+export async function clearMessages(): Promise<void> {
+  await fetch("/api/messages", { method: "DELETE" });
+}
+
 export async function chatStream(
   message: string,
   provider: string | null,

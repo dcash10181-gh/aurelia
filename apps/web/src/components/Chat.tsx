@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { chatStream, ToolCall } from "../lib/api";
+import { chatStream, clearMessages, ToolCall } from "../lib/api";
 import { Halo } from "./Halo";
 
 interface Msg { role: "user" | "assistant"; content: string; meta?: string; steps?: ToolCall[] }

@@ -83,3 +83,13 @@ def test_memory_endpoint_integration(client):
     """memory.* tools appear in /api/tools when the app wires its db."""
     names = {t["name"] for t in client.get("/api/tools").json()}
     assert {"memory.save", "memory.search"} <= names
+
+
+def test_decision_prompt_has_recall_example():
+    """Recall questions must be steered to memory.search — 3B models follow
+    examples, not rules. Pin the example so it can't be pruned."""
+    from aurelia_api.services.providers import OllamaProvider
+    p = OllamaProvider._DECISION_PROMPT
+    assert "memory.search" in p
+    assert "what is my dog" in p
+    assert "never the calculator" in p

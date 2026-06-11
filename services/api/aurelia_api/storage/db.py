@@ -177,6 +177,13 @@ class Database:
             return cur.rowcount > 0
 
     # ----- messages ------------------------------------------------------
+    def clear_messages(self) -> int:
+        """Start a fresh conversation: wipe chat history. Memories are a
+        separate, durable store and are deliberately NOT touched."""
+        with self.connect() as conn:
+            cur = conn.execute("DELETE FROM messages")
+            return cur.rowcount
+
     def add_message(self, role: str, content: str) -> dict[str, Any]:
         row = {"id": uuid.uuid4().hex, "role": role, "content": content, "created_at": time.time()}
         with self.connect() as conn:
