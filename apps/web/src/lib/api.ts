@@ -6,7 +6,8 @@ export interface Memory { id: string; content: string; tags: string[]; created_a
 export interface ToolInfo { name: string; description: string; enabled: boolean }
 export interface ProviderInfo { name: string; available: boolean; default: boolean }
 export interface Status {
-  app: string; version: string; uptime_s: number; python: string;
+  app: string; version: string; uptime_s: number;
+  build?: string; python: string;
   providers: Record<string, boolean>; default_provider: string;
   shell_tool_enabled: boolean; data_dir: string;
 }

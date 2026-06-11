@@ -31,6 +31,29 @@ from .storage.db import Database
 configure_logging(settings.log_level)
 log = logging.getLogger("aurelia.api")
 
+def _git_commit() -> str:
+    """Short hash of the running code, for at-a-glance staleness checks.
+
+    Walks up from this file to the repo root (editable installs live inside
+    the checkout). 'unknown' for non-git deployments — never an error.
+    """
+    import pathlib
+    import subprocess
+    here = pathlib.Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / ".git").exists():
+            try:
+                return subprocess.run(
+                    ["git", "-C", str(parent), "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip() or "unknown"
+            except Exception:
+                return "unknown"
+    return "unknown"
+
+
+_BUILD = _git_commit()
+
 app = FastAPI(title="AURELIA API", version=__version__)
 # Local-only UI origins. The server binds 127.0.0.1 by default.
 app.add_middleware(
@@ -58,7 +81,8 @@ def _provider(name: str | None):
 # ------------------------------------------------------------------ system
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": settings.app_name, "version": __version__}
+    return {"status": "ok", "app": settings.app_name, "version": __version__,
+            "build": _BUILD}
 
 
 @app.get("/api/status")
@@ -66,6 +90,7 @@ def status():
     return {
         "app": settings.app_name,
         "version": __version__,
+        "build": _BUILD,
         "uptime_s": round(time.time() - _started, 1),
         "python": platform.python_version(),
         "providers": {k: p.available() for k, p in providers.items()},

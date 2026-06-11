@@ -56,6 +56,7 @@ export function SidePanel({
         <ul className="text-xs space-y-1 font-mono text-mist">
           <li><span className="text-teal">●</span> local · v{status?.version ?? "…"}</li>
           <li>uptime {status ? Math.round(status.uptime_s) : "…"}s · py {status?.python}</li>
+          <li className="text-mist/50">build {status?.build ?? "…"}</li>
           <li>shell tool: {status?.shell_tool_enabled ? "enabled ⚠" : "disabled (safe)"}</li>
         </ul>
       </Section>
