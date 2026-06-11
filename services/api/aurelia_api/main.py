@@ -67,7 +67,7 @@ db = Database(settings.db_path)
 providers = build_providers(settings)
 from .tools.builtin import build_default_registry  # noqa: E402
 
-registry = build_default_registry(settings.data_dir, enable_shell=settings.enable_shell_tool, db=db)
+registry = build_default_registry(settings.data_dir, enable_shell=settings.enable_shell_tool, db=db, enable_web=settings.enable_web_tool)
 _started = time.time()
 
 

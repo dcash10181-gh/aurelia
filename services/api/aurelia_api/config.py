@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     db_filename: str = "aurelia.db"
     # SECURITY: shell tool is off unless the user explicitly opts in.
     enable_shell_tool: bool = False
+    # web.fetch tool: user-directed outbound HTTP(S) GET with SSRF guards
+    # (private/loopback/link-local addresses are always refused). This is a
+    # feature the user invokes, not telemetry — AURELIA never calls home.
+    enable_web_tool: bool = True
     # LLM-driven tool selection: when a capable provider (Ollama) handles the
     # turn, the model itself decides which tool to call via a constrained
     # JSON decision pass. Regex routing remains the fallback. Set
