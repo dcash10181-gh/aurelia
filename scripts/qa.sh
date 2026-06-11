@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# Refuse to run from anywhere but the repo root: a wrong-directory run that
+# "fails to find" suites or silently skips them is how bad code gets pushed.
+if [ ! -f "scripts/qa.sh" ] || [ ! -f "Makefile" ]; then
+  echo "qa.sh must be run from the repository root" >&2
+  exit 2
+fi
 # QA gate: completeness, tests, lint, install dry-run, safety checks.
 set -uo pipefail
 cd "$(dirname "$0")/.."

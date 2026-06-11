@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, Memory, ProviderInfo, Status, ToolInfo } from "../lib/api";
+import { api, workspace, Memory, ProviderInfo, Status, ToolInfo } from "../lib/api";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -25,11 +25,23 @@ export function SidePanel({
   // always reflects the latest value; only an unset selection is defaulted.
   const providerRef = useRef(provider);
   providerRef.current = provider;
+  const [wsFiles, setWsFiles] = useState<string[]>([]);
+  const [wsOpen, setWsOpen] = useState<string | null>(null);
+  const [wsContent, setWsContent] = useState("");
+
+  async function openWsFile(path: string) {
+    if (wsOpen === path) { setWsOpen(null); return; }
+    setWsOpen(path);
+    setWsContent(await workspace.read(path).catch(() => "(unreadable)"));
+  }
 
   async function refresh() {
     try {
-      const [s, t, p, m] = await Promise.all([api.status(), api.tools(), api.providers(), api.memories()]);
-      setStatus(s); setTools(t); setProviders(p); setMemories(m); setErr(false);
+      const [s, t, p, m, w] = await Promise.all([
+        api.status(), api.tools(), api.providers(), api.memories(),
+        workspace.list().catch(() => [] as string[]),
+      ]);
+      setStatus(s); setTools(t); setProviders(p); setMemories(m); setWsFiles(w); setErr(false);
       if (!providerRef.current) setProvider(s.default_provider);
     } catch { setErr(true); }
   }
@@ -84,6 +96,28 @@ export function SidePanel({
             </li>
           ))}
         </ul>
+      </Section>
+
+      <Section title="Workspace">
+        {wsFiles.length === 0 ? (
+          <p className="text-xs text-mist/50">No files yet — ask the agent to write one.</p>
+        ) : (
+          <ul className="text-xs space-y-1">
+            {wsFiles.map((f) => (
+              <li key={f}>
+                <button onClick={() => openWsFile(f)}
+                        className="text-teal hover:text-gold text-left break-all">
+                  {wsOpen === f ? "▾ " : "▸ "}{f}
+                </button>
+                {wsOpen === f && (
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded border border-line bg-well p-2 text-[10px] text-mist/90">
+                    {wsContent}
+                  </pre>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       <Section title="Memory">

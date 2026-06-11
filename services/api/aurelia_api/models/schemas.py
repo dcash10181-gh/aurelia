@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
+    conversation_id: str | None = None  # None -> 'default' (CLI compat)
     message: str = Field(min_length=1, max_length=20000)
     provider: str | None = None
 

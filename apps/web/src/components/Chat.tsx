@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { chatStream, clearMessages, ToolCall } from "../lib/api";
+import { chatStream, Conversation, conversations, ToolCall } from "../lib/api";
 import { Halo } from "./Halo";
 
 interface Msg { role: "user" | "assistant"; content: string; meta?: string; steps?: ToolCall[] }
@@ -8,6 +8,26 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [state, setState] = useState<"idle" | "thinking" | "tool">("idle");
+  const [convs, setConvs] = useState<Conversation[]>([]);
+  const [convId, setConvId] = useState<string>("default");
+
+  // Load the conversation list once; resume the most recent conversation
+  // (people close laptops mid-thought — resuming is the daily-driver default).
+  useEffect(() => {
+    conversations.list().then((cs) => {
+      setConvs(cs);
+      const latest = cs[0]?.id ?? "default";
+      setConvId(latest);
+      conversations.messages(latest).then((ms) =>
+        setMsgs(ms.map((m) => ({ role: m.role, content: m.content }))));
+    }).catch(() => {/* backend down; Chat still renders */});
+  }, []);
+
+  async function switchConversation(id: string) {
+    setConvId(id);
+    const ms = await conversations.messages(id);
+    setMsgs(ms.map((m) => ({ role: m.role, content: m.content })));
+  }
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
@@ -42,7 +62,10 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
             return next;
           });
         },
+        convId,
       );
+      // First message titles the conversation server-side; refresh the list.
+      conversations.list().then(setConvs).catch(() => {});
       if (meta.tool_calls.length) { setState("tool"); onToolUse(); }
       setMsgs((m) => {
         const next = m.slice();

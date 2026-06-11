@@ -63,6 +63,27 @@ export function parseSseFrame(
  * Frames are buffered on the SSE delimiter (\n\n) because network reads can
  * split or coalesce frames arbitrarily.
  */
+export interface Conversation { id: string; title: string; updated_at: number }
+
+export const conversations = {
+  list: (): Promise<Conversation[]> =>
+    fetch("/api/conversations").then((r) => r.json()),
+  create: (): Promise<Conversation> =>
+    fetch("/api/conversations", { method: "POST" }).then((r) => r.json()),
+  remove: (id: string): Promise<void> =>
+    fetch(`/api/conversations/${id}`, { method: "DELETE" }).then(() => undefined),
+  messages: (id: string): Promise<{ role: "user" | "assistant"; content: string }[]> =>
+    fetch(`/api/messages?conversation_id=${encodeURIComponent(id)}`).then((r) => r.json()),
+};
+
+export const workspace = {
+  list: (): Promise<string[]> =>
+    fetch("/api/workspace").then((r) => r.json()).then((d) => d.files ?? []),
+  read: (path: string): Promise<string> =>
+    fetch(`/api/workspace/file?path=${encodeURIComponent(path)}`)
+      .then((r) => r.json()).then((d) => d.content ?? ""),
+};
+
 export async function clearMessages(): Promise<void> {
   await fetch("/api/messages", { method: "DELETE" });
 }
@@ -72,11 +93,13 @@ export async function chatStream(
   provider: string | null,
   onToken: (t: string) => void,
   onEvent?: (e: ToolCall) => void,
+  conversationId?: string,
 ): Promise<StreamMeta> {
   const res = await fetch("/api/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, provider: provider ?? null }),
+    body: JSON.stringify({ message, provider: provider ?? null,
+                           conversation_id: conversationId ?? null }),
   });
   if (!res.ok || !res.body) throw new Error(`${res.status}: ${await res.text()}`);
 

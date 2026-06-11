@@ -68,6 +68,8 @@ providers = build_providers(settings)
 from .tools.builtin import build_default_registry  # noqa: E402
 
 registry = build_default_registry(settings.data_dir, enable_shell=settings.enable_shell_tool, db=db, enable_web=settings.enable_web_tool)
+from .tools.builtin import WorkspaceTool  # noqa: E402
+_workspace = WorkspaceTool(settings.data_dir)
 _started = time.time()
 
 
@@ -107,10 +109,12 @@ def chat(req: ChatRequest):
     # History is captured before the new user message is persisted, so the
     # context contains prior turns only — not an echo of the current one.
     history = [{"role": m["role"], "content": m["content"]}
-               for m in db.recent_messages(limit=12)]
-    db.add_message("user", req.message)
+               for m in db.recent_messages(limit=12, conversation_id=req.conversation_id or "default")]
+    conv = req.conversation_id or "default"
+    db.maybe_autotitle(conv, req.message)
+    db.add_message("user", req.message, conv)
     result = run_agent_turn(req.message, provider, registry, db, history)
-    db.add_message("assistant", result["reply"])
+    db.add_message("assistant", result["reply"], conv)
     return result
 
 
@@ -125,8 +129,10 @@ def agent(req: ChatRequest):
 async def chat_stream(req: ChatRequest):
     provider = _provider(req.provider)
     history = [{"role": m["role"], "content": m["content"]}
-               for m in db.recent_messages(limit=12)]
-    db.add_message("user", req.message)
+               for m in db.recent_messages(limit=12, conversation_id=req.conversation_id or "default")]
+    conv = req.conversation_id or "default"
+    db.maybe_autotitle(conv, req.message)
+    db.add_message("user", req.message, conv)
 
     async def gen():
         # Bridge the synchronous agent/provider generator into the async SSE
@@ -142,7 +148,7 @@ async def chat_stream(req: ChatRequest):
         yield "data: [DONE]\n\n"
         # Persist once, after the full reply exists. Runs inside the generator
         # so a client disconnect mid-stream still persists what was sent.
-        db.add_message("assistant", "".join(parts))
+        db.add_message("assistant", "".join(parts), conv)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
@@ -157,9 +163,44 @@ async def clear_messages():
     return {"cleared": n}
 
 
+@app.post("/api/conversations")
+async def create_conversation():
+    return db.create_conversation()
+
+
+@app.get("/api/conversations")
+async def list_conversations():
+    return db.list_conversations()
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str):
+    if conv_id == "default":
+        raise HTTPException(400, "The default conversation cannot be deleted")
+    if not db.delete_conversation(conv_id):
+        raise HTTPException(404, "No such conversation")
+    return {"deleted": conv_id}
+
+
+@app.get("/api/workspace")
+async def workspace_list():
+    """Read-only browser over the agent's file workspace."""
+    return {"files": _workspace.list({}).splitlines()
+            if "(workspace is empty)" not in _workspace.list({}) else []}
+
+
+@app.get("/api/workspace/file")
+async def workspace_file(path: str):
+    try:
+        return {"path": path, "content": _workspace.read({"path": path})}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 @app.get("/api/messages")
-def messages(limit: int = 50):
-    return db.recent_messages(limit=min(limit, 500))
+def messages(limit: int = 50, conversation_id: str | None = None):
+    return db.recent_messages(limit=min(limit, 500),
+                              conversation_id=conversation_id)
 
 
 # ------------------------------------------------------------------ memory
