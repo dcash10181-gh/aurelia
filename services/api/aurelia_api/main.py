@@ -10,6 +10,7 @@ rule-based fallback). Frames are JSON `data:` lines ending with `[DONE]`.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import platform
@@ -54,7 +55,19 @@ def _git_commit() -> str:
 
 _BUILD = _git_commit()
 
-app = FastAPI(title="AURELIA API", version=__version__)
+from contextlib import asynccontextmanager  # noqa: E402
+
+from .services.tasks import is_due, parse_schedule, task_loop  # noqa: E402
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    runner = asyncio.create_task(task_loop(db, registry, _provider))
+    yield
+    runner.cancel()
+
+
+app = FastAPI(title="AURELIA API", version=__version__, lifespan=_lifespan)
 # Local-only UI origins. The server binds 127.0.0.1 by default.
 app.add_middleware(
     CORSMiddleware,
@@ -195,6 +208,53 @@ async def workspace_file(path: str):
         return {"path": path, "content": _workspace.read({"path": path})}
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@app.patch("/api/conversations/{conv_id}")
+async def rename_conversation(conv_id: str, body: dict):
+    title = str(body.get("title", "")).strip()
+    if not title:
+        raise HTTPException(400, "title required")
+    if not db.rename_conversation(conv_id, title):
+        raise HTTPException(404, "No such conversation")
+    return {"id": conv_id, "title": title}
+
+
+@app.post("/api/tasks")
+async def create_task(body: dict):
+    prompt = str(body.get("prompt", "")).strip()
+    schedule = str(body.get("schedule", "")).strip()
+    if not prompt:
+        raise HTTPException(400, "prompt required")
+    try:
+        parse_schedule(schedule)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    conv = db.create_conversation(title=f"⏱ {prompt[:40]}")
+    return db.create_task(prompt, schedule, body.get("provider"), conv["id"])
+
+
+@app.get("/api/tasks")
+async def list_tasks():
+    out = []
+    for t in db.list_tasks():
+        t["due"] = is_due(t)
+        out.append(t)
+    return out
+
+
+@app.patch("/api/tasks/{task_id}")
+async def toggle_task(task_id: str, body: dict):
+    if not db.set_task_enabled(task_id, bool(body.get("enabled", True))):
+        raise HTTPException(404, "No such task")
+    return {"id": task_id, "enabled": bool(body.get("enabled", True))}
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str):
+    if not db.delete_task(task_id):
+        raise HTTPException(404, "No such task")
+    return {"deleted": task_id}
 
 
 @app.get("/api/messages")

@@ -72,8 +72,35 @@ export const conversations = {
     fetch("/api/conversations", { method: "POST" }).then((r) => r.json()),
   remove: (id: string): Promise<void> =>
     fetch(`/api/conversations/${id}`, { method: "DELETE" }).then(() => undefined),
+  rename: (id: string, title: string): Promise<void> =>
+    fetch(`/api/conversations/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).then(() => undefined),
   messages: (id: string): Promise<{ role: "user" | "assistant"; content: string }[]> =>
     fetch(`/api/messages?conversation_id=${encodeURIComponent(id)}`).then((r) => r.json()),
+};
+
+export interface Task {
+  id: string; prompt: string; schedule: string; enabled: number;
+  last_run_at: number | null; last_error: string | null;
+  conversation_id: string; due?: boolean;
+}
+
+export const tasks = {
+  list: (): Promise<Task[]> => fetch("/api/tasks").then((r) => r.json()),
+  create: (prompt: string, schedule: string): Promise<Task> =>
+    fetch("/api/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, schedule }),
+    }).then((r) => { if (!r.ok) throw new Error("bad schedule"); return r.json(); }),
+  toggle: (id: string, enabled: boolean): Promise<void> =>
+    fetch(`/api/tasks/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }).then(() => undefined),
+  remove: (id: string): Promise<void> =>
+    fetch(`/api/tasks/${id}`, { method: "DELETE" }).then(() => undefined),
 };
 
 export const workspace = {

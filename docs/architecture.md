@@ -69,6 +69,16 @@ zero changes). The UI offers a switcher, New chat, and resume-most-recent on
 load. DELETE /api/conversations/{id} removes a chat and its messages; durable
 memories are never touched by any conversation operation.
 
+## Background tasks (`services/tasks.py`)
+Scheduled agent runs: minimal schedules ('30m'/'2h' intervals or
+'daily HH:MM' — cron is deliberately not supported), a single asyncio loop
+started via FastAPI lifespan, sequential execution in a worker thread. Each
+task owns a ⏱-titled conversation and its results land there as ordinary
+messages — the chat UI is the task inbox; no parallel notification system.
+Failures are recorded on the task row and never escape the loop. Tasks run
+through the same agent loop, registry enforcement, and provider stack as
+interactive turns.
+
 ## Streaming (`/api/chat/stream`)
 True token-level SSE. The provider interface exposes `stream()`: the mini LLM
 yields each sampled token (one char with the char tokenizer), Ollama forwards
