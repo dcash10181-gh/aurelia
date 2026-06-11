@@ -193,6 +193,8 @@ class OllamaProvider(Provider):
         '"args": {{"content": "User\'s dog is named Biscuit"}}}}\n'
         'User: "what is my dog\'s name?" -> {{"tool": "memory.search", '
         '"args": {{"query": "dog name"}}}}\n'
+        'User: "fetch https://example.com/page and summarize it" -> '
+        '{{"tool": "web.fetch", "args": {{"url": "https://example.com/page"}}}}\n'
         'User: "suggest a name for my cat" -> {{"tool": null, "args": {{}}}}'
         "{memories}"
         "{observations}"

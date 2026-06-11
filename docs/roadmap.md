@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Near-term
+- ~~Actuator pack: web.fetch + workspace files~~ — shipped: SSRF-guarded read-only web fetch, sandboxed general file workspace, config-gated.
 - ~~ReAct multi-step agent loop~~ — shipped: decide→act→observe chaining with step cap, stuck-loop detection, error-observations, live tool_event streaming to the UI.
 - ~~SQLite FTS5 for memory search (replace LIKE)~~ — shipped: BM25-ranked FTS5 with prefix matching, sync triggers, auto-migration, LIKE fallback.
 - ~~True token streaming from providers through the existing SSE contract~~ — shipped: per-token SSE from mini LLM, NDJSON pass-through for Ollama, chunked fallback for rule-based; frontend renders incrementally.

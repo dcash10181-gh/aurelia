@@ -14,9 +14,14 @@ from __future__ import annotations
 
 import ast
 import datetime
+import html.parser
+import ipaddress
 import operator
 import shlex
+import socket
 import subprocess
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +148,124 @@ def make_shell_tool(enabled: bool) -> Tool:
     )
 
 
+class _TextExtractor(html.parser.HTMLParser):
+    """Minimal HTML→text: drops script/style/nav noise, keeps visible text."""
+    _SKIP = {"script", "style", "noscript", "template", "svg", "head"}
+
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._SKIP:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag in self._SKIP and self._skip_depth:
+            self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if not self._skip_depth and data.strip():
+            self.parts.append(data.strip())
+
+
+def _host_is_private(host: str) -> bool:
+    """SSRF guard: True if ANY resolved address is non-public.
+
+    SECURITY: the model chooses fetch URLs; without this it could probe
+    localhost services (the AURELIA API itself, Ollama, anything on the LAN).
+    Every resolved address must be globally routable — loopback, private,
+    link-local, and reserved ranges are all refused. Resolution failure is
+    treated as private (fail closed).
+    """
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return True
+    if not infos:
+        return True
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0])
+        if not addr.is_global:
+            return True
+    return False
+
+
+class WebTool:
+    """User-directed HTTP(S) GET with hard limits. No POST, no auth, no
+    cookies — read-only by design; side-effectful web actions are a
+    deliberate non-feature at this trust level."""
+
+    MAX_BYTES = 200_000
+    TIMEOUT = 15
+
+    def fetch(self, args: dict[str, Any]) -> str:
+        url = str(args.get("url", "")).strip()
+        if not url:
+            raise ValueError("web.fetch requires 'url'")
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Only http(s) URLs are allowed")
+        if not parsed.hostname or _host_is_private(parsed.hostname):
+            raise ValueError("Refusing to fetch private/loopback/unresolvable hosts")
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "AURELIA/0.1 (local-first personal agent)"})
+        with urllib.request.urlopen(req, timeout=self.TIMEOUT) as resp:
+            ctype = resp.headers.get("Content-Type", "")
+            raw = resp.read(self.MAX_BYTES)
+        text = raw.decode("utf-8", errors="replace")
+        if "html" in ctype:
+            ex = _TextExtractor()
+            ex.feed(text)
+            text = "\n".join(ex.parts)
+        if len(text) > 8000:
+            text = text[:8000] + "\n[truncated]"
+        return text or "(empty response)"
+
+
+class WorkspaceTool:
+    """General file sandbox at <data_dir>/workspace. Same containment model
+    as notes: every path resolves inside the root or the call is refused."""
+
+    READ_CAP = 50_000
+    WRITE_CAP = 200_000
+
+    def __init__(self, data_dir: str | Path):
+        self.root = (Path(data_dir) / "workspace").resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _safe(self, rel: str) -> Path:
+        p = (self.root / str(rel)).resolve()
+        if not p.is_relative_to(self.root):
+            raise ValueError("Path escapes the workspace sandbox")
+        return p
+
+    def read(self, args: dict[str, Any]) -> str:
+        p = self._safe(args.get("path", ""))
+        if not p.is_file():
+            raise ValueError(f"No such workspace file: {args.get('path')}")
+        data = p.read_text(errors="replace")
+        return data[: self.READ_CAP]
+
+    def write(self, args: dict[str, Any]) -> str:
+        rel = str(args.get("path", "")).strip()
+        content = str(args.get("content", ""))
+        if not rel:
+            raise ValueError("files.write requires 'path'")
+        if len(content) > self.WRITE_CAP:
+            raise ValueError("Content exceeds workspace write cap")
+        p = self._safe(rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+        return f"Wrote {len(content)} chars to {p.relative_to(self.root)}"
+
+    def list(self, args: dict[str, Any]) -> str:
+        files = sorted(str(f.relative_to(self.root))
+                       for f in self.root.rglob("*") if f.is_file())
+        return "\n".join(files) if files else "(workspace is empty)"
+
+
 class MemoryTools:
     """Agent-facing handles on the durable memory store.
 
@@ -184,7 +307,7 @@ class MemoryTools:
 
 
 def build_default_registry(data_dir: str | Path, enable_shell: bool = False,
-                           db=None) -> ToolRegistry:
+                           db=None, enable_web: bool = True) -> ToolRegistry:
     reg = ToolRegistry()
     notes = NotesTool(data_dir)
     reg.register(Tool("calculator", "Evaluate an arithmetic expression safely.",
@@ -195,6 +318,20 @@ def build_default_registry(data_dir: str | Path, enable_shell: bool = False,
                       notes.write, {"name": "string", "content": "string"}))
     reg.register(Tool("notes.read", "Read a saved note.", notes.read, {"name": "string"}))
     reg.register(Tool("notes.list", "List saved notes.", notes.list, {}))
+    ws = WorkspaceTool(data_dir)
+    reg.register(Tool("files.write", "Write a text file in the agent workspace.",
+                      ws.write, {"path": "string (relative)", "content": "string"}))
+    reg.register(Tool("files.read", "Read a text file from the agent workspace.",
+                      ws.read, {"path": "string (relative)"}))
+    reg.register(Tool("files.list", "List files in the agent workspace.",
+                      ws.list, {}))
+    if enable_web:
+        web = WebTool()
+        reg.register(Tool(
+            "web.fetch",
+            "Fetch a public http(s) URL and return its text content. "
+            "Use when the user asks to look something up online or gives a URL.",
+            web.fetch, {"url": "string"}))
     if db is not None:
         mem = MemoryTools(db)
         reg.register(Tool(
