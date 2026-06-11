@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Near-term
+- ~~Daily-driver: first-class conversations + workspace browser~~ — shipped: per-chat scoped history with migration, auto-titles, UI switcher/resume, read-only workspace file browser in the side panel, qa.sh root-guard.
 - ~~Actuator pack: web.fetch + workspace files~~ — shipped: SSRF-guarded read-only web fetch, sandboxed general file workspace, config-gated.
 - ~~ReAct multi-step agent loop~~ — shipped: decide→act→observe chaining with step cap, stuck-loop detection, error-observations, live tool_event streaming to the UI.
 - ~~SQLite FTS5 for memory search (replace LIKE)~~ — shipped: BM25-ranked FTS5 with prefix matching, sync triggers, auto-migration, LIKE fallback.

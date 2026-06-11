@@ -20,14 +20,22 @@ CREATE TABLE IF NOT EXISTS memories (
     tags TEXT NOT NULL DEFAULT '',
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     role TEXT NOT NULL CHECK (role IN ('user','assistant','system','tool')),
     content TEXT NOT NULL,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    conversation_id TEXT NOT NULL DEFAULT 'default' 
 );
 CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
 """
 
 # FTS5 schema is kept separate so we can degrade gracefully on SQLite builds
@@ -66,7 +74,20 @@ class Database:
 
     def _init(self) -> None:
         with self.connect() as conn:
+            # Migration: databases created before conversations existed have a
+            # messages table without conversation_id. ALTER must run before the
+            # index in _SCHEMA that references the column.
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(messages)")}
+            if cols and "conversation_id" not in cols:
+                conn.execute("ALTER TABLE messages ADD COLUMN "
+                             "conversation_id TEXT NOT NULL DEFAULT 'default'")
             conn.executescript(_SCHEMA)
+            # Every DB gets a default conversation so the CLI and any client
+            # that doesn't manage conversations keeps working unchanged.
+            conn.execute(
+                "INSERT OR IGNORE INTO conversations (id, title, created_at, updated_at) "
+                "VALUES ('default', 'Default', ?, ?)",
+                (__import__('time').time(), __import__('time').time()))
             try:
                 conn.executescript(_FTS_SCHEMA)
                 # Migration for databases created before FTS existed. NB: with
@@ -177,6 +198,38 @@ class Database:
             return cur.rowcount > 0
 
     # ----- messages ------------------------------------------------------
+    # ---------------------------------------------------------- conversations
+    def create_conversation(self, title: str = "New chat") -> dict[str, Any]:
+        now = time.time()
+        row = {"id": uuid.uuid4().hex, "title": title,
+               "created_at": now, "updated_at": now}
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO conversations (id, title, created_at, updated_at) "
+                "VALUES (:id, :title, :created_at, :updated_at)", row)
+        return row
+
+    def list_conversations(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM conversations ORDER BY updated_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_conversation(self, conv_id: str) -> bool:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
+            cur = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+            return cur.rowcount > 0
+
+    def maybe_autotitle(self, conv_id: str, first_message: str) -> None:
+        """First user message becomes the title of an untitled conversation."""
+        title = first_message.strip()[:48] or "New chat"
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE conversations SET title = ? "
+                "WHERE id = ? AND title IN ('New chat', 'Default')",
+                (title, conv_id))
+
     def clear_messages(self) -> int:
         """Start a fresh conversation: wipe chat history. Memories are a
         separate, durable store and are deliberately NOT touched."""
@@ -184,20 +237,35 @@ class Database:
             cur = conn.execute("DELETE FROM messages")
             return cur.rowcount
 
-    def add_message(self, role: str, content: str) -> dict[str, Any]:
-        row = {"id": uuid.uuid4().hex, "role": role, "content": content, "created_at": time.time()}
+    def add_message(self, role: str, content: str,
+                    conversation_id: str = "default") -> dict[str, Any]:
+        row = {"id": uuid.uuid4().hex, "role": role, "content": content,
+               "created_at": time.time()}
         with self.connect() as conn:
             conn.execute(
-                "INSERT INTO messages (id, role, content, created_at) VALUES (?,?,?,?)",
-                (row["id"], row["role"], row["content"], row["created_at"]),
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (row["created_at"], conversation_id))
+            conn.execute(
+                "INSERT INTO messages (id, role, content, created_at, conversation_id) "
+                "VALUES (?,?,?,?,?)",
+                (row["id"], row["role"], row["content"], row["created_at"],
+                 conversation_id),
             )
+        row["conversation_id"] = conversation_id
         return row
 
-    def recent_messages(self, limit: int = 50) -> list[dict[str, Any]]:
+    def recent_messages(self, limit: int = 50,
+                        conversation_id: str | None = None) -> list[dict[str, Any]]:
         with self.connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?", (limit,)
-            ).fetchall()
+            if conversation_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM messages ORDER BY created_at DESC LIMIT ?",
+                    (limit,)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM messages WHERE conversation_id = ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (conversation_id, limit)).fetchall()
         return [dict(r) for r in reversed(rows)]
 
     @staticmethod

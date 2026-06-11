@@ -59,6 +59,16 @@ shell tool stays disabled no matter what the model emits. Selection failures
 degrade routing quality, never availability. Disable with
 AURELIA_LLM_TOOL_SELECTION=false.
 
+## Conversations
+Chats are first-class: a `conversations` table, `conversation_id` on every
+message, and history scoped per conversation — the agent's 12-message context
+window can no longer bleed topics across chats. First user message auto-titles
+the conversation. Pre-conversation databases migrate in place (column added,
+rows land in a 'default' conversation, which also keeps the CLI working with
+zero changes). The UI offers a switcher, New chat, and resume-most-recent on
+load. DELETE /api/conversations/{id} removes a chat and its messages; durable
+memories are never touched by any conversation operation.
+
 ## Streaming (`/api/chat/stream`)
 True token-level SSE. The provider interface exposes `stream()`: the mini LLM
 yields each sampled token (one char with the char tokenizer), Ollama forwards
