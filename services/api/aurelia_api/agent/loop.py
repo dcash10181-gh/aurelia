@@ -117,6 +117,15 @@ def _react_steps(message: str, provider: Provider, tools: ToolRegistry):
             result = tools.invoke(sel["tool"], sel["args"])
         except Exception as e:
             result = f"ERROR: {e}"
+        if any(o["tool"] == sel["tool"] and o["result"] == result
+               for o in observations):
+            # Same tool produced the same result via near-duplicate args:
+            # no new information — the loop is spinning, stop after this.
+            log.info("ReAct: %s repeated an identical result; breaking", sel["tool"])
+            observations.append({"tool": sel["tool"], "args": sel["args"],
+                                 "result": result})
+            yield observations[-1]
+            return
         obs = {"tool": sel["tool"], "args": sel["args"], "result": result}
         observations.append(obs)
         yield obs
@@ -126,12 +135,14 @@ def _compose_react_prompt(message: str, observations: list[dict]) -> str:
     lines = "\n".join(
         f"{i + 1}. {o['tool']}({json.dumps(o['args'], default=str)}) -> {o['result']}"
         for i, o in enumerate(observations))
-    return (f"The user asked: {message}\n"
-            f"You called these tools:\n{lines}\n"
-            "Answer the user concisely using these results. If a tool "
-            "returned an ERROR, work around it or say plainly what could "
-            "not be done. Do not mention internal tooling unless they "
-            "asked about it.")
+    return (f"The user's LATEST message is: {message}\n"
+            f"You called these tools for it:\n{lines}\n"
+            "Respond to the LATEST message only — earlier conversation is "
+            "background context, not a question to answer. If the latest "
+            "message asked you to save or remember something, confirm what "
+            "was saved. Use the tool results; if one returned an ERROR, "
+            "work around it or say plainly what could not be done. Do not "
+            "mention internal tooling unless they asked about it.")
 
 
 def _provider_tag(provider: Provider, observations: list[dict]) -> str:

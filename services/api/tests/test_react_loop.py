@@ -117,3 +117,45 @@ def test_decline_on_first_pass_falls_through(tmp_path):
     frames = list(run_agent_turn_stream("calculate 9*9", p, reg, db))
     assert frames[-1]["meta"]["provider"] == "agent+calculator"  # regex tier
     assert p.decision_calls == 1
+
+
+def test_near_duplicate_save_is_idempotent(tmp_path):
+    """Live-test regression: model requested the same save twice with
+    trivially different args; both executed and duplicated the memory.
+    The tool layer must self-protect — only one row may land."""
+    db, reg = setup(tmp_path)
+    p = SequencedProvider([
+        {"tool": "memory.save", "args": {"content": "monthly budget is $200"}},
+        {"tool": "memory.save", "args": {"content": "monthly budget is $200",
+                                         "tags": ""}},
+        {"tool": None, "args": {}},
+    ])
+    out = run_agent_turn("remember my budget is $200", p, reg, db)
+    hits = db.search_memories("budget", match_any=True)
+    assert len(hits) == 1
+    assert "Already in memory" in out["tool_calls"][1]["result"]
+
+
+def test_identical_result_breaks_loop(tmp_path):
+    """Near-duplicate args evade the (tool, args) guard; an identical result
+    from the same tool means no new information — loop must stop there."""
+    db, reg = setup(tmp_path)
+    p = SequencedProvider([
+        {"tool": "calculator", "args": {"expression": "2+2"}},
+        {"tool": "calculator", "args": {"expression": "2 + 2"}},  # same result
+        {"tool": "calculator", "args": {"expression": "5+5"}},    # must not run
+    ])
+    out = run_agent_turn("math spam", p, reg, db)
+    assert len(out["tool_calls"]) == 2
+    assert all(c["result"] == "4" for c in out["tool_calls"])
+
+
+def test_compose_prompt_focuses_latest_message():
+    """Context-bleed regression: the composed answer must be steered to the
+    latest message, with history demoted to background."""
+    from aurelia_api.agent.loop import _compose_react_prompt
+    p = _compose_react_prompt("remember X", [
+        {"tool": "memory.save", "args": {}, "result": "Saved"}])
+    assert "LATEST message" in p
+    assert "background context" in p
+    assert "confirm what was saved" in p.lower() or "confirm what" in p
