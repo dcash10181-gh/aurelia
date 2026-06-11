@@ -14,7 +14,7 @@ class ScriptedProvider(Provider):
     def __init__(self, decision):
         self.decision = decision
 
-    def tool_decision(self, message, tools, observations=None):
+    def tool_decision(self, message, tools, observations=None, memories=None):
         return self.decision
 
     def generate(self, prompt, history=None):

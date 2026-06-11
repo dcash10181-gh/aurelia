@@ -15,7 +15,7 @@ class SequencedProvider(Provider):
         self.seen_observations = []
         self.decision_calls = 0
 
-    def tool_decision(self, message, tools, observations=None):
+    def tool_decision(self, message, tools, observations=None, memories=None):
         self.decision_calls += 1
         self.seen_observations.append(list(observations or []))
         if self.decisions:
@@ -159,3 +159,33 @@ def test_compose_prompt_focuses_latest_message():
     assert "LATEST message" in p
     assert "background context" in p
     assert "confirm what was saved" in p.lower() or "confirm what" in p
+
+
+def test_decision_pass_sees_recalled_memories(tmp_path):
+    """Regression for the calculator spasm: the decision pass must receive
+    the same recalled memories the answer context gets, so the model knows
+    the fact is already in hand and declines tools."""
+    db, reg = setup(tmp_path)
+    db.create_memory("User remembers monthly budget is $200", ["money"])
+
+    captured = {}
+
+    class Spy(SequencedProvider):
+        def tool_decision(self, message, tools, observations=None, memories=None):
+            captured["memories"] = memories
+            return super().tool_decision(message, tools, observations, memories)
+
+    p = Spy([{"tool": None, "args": {}}])
+    run_agent_turn("what is my monthly budget?", p, reg, db)
+    assert captured["memories"], "decision pass received no memories"
+    assert any("$200" in m["content"] for m in captured["memories"])
+
+
+def test_memories_prompt_contract():
+    from aurelia_api.services.providers import OllamaProvider
+    out = OllamaProvider._format_memories(
+        [{"content": "monthly budget is $200"}])
+    assert "ALREADY KNOW" in out
+    assert "MUST be null" in out
+    assert "NEVER call the calculator" in out
+    assert OllamaProvider._format_memories(None) == ""

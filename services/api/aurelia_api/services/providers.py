@@ -53,7 +53,8 @@ class Provider(ABC):
     supports_tool_selection: bool = False
 
     def tool_decision(self, message: str, tools: list[dict],
-                      observations: list[dict] | None = None) -> dict | None:
+                      observations: list[dict] | None = None,
+                      memories: list[dict] | None = None) -> dict | None:
         return None
 
 
@@ -193,8 +194,21 @@ class OllamaProvider(Provider):
         'User: "what is my dog\'s name?" -> {{"tool": "memory.search", '
         '"args": {{"query": "dog name"}}}}\n'
         'User: "suggest a name for my cat" -> {{"tool": null, "args": {{}}}}'
+        "{memories}"
         "{observations}"
     )
+
+    @staticmethod
+    def _format_memories(memories: list[dict] | None) -> str:
+        if not memories:
+            return ""
+        lines = "\n".join(f"- {m['content']}" for m in memories)
+        return ("\n\nYou ALREADY KNOW these saved facts about the user "
+                "(they are provided to you automatically):\n" + lines +
+                "\nIf these facts already answer the user's question, tool "
+                "MUST be null — do NOT call memory.search for facts listed "
+                "above, and NEVER call the calculator unless the user asked "
+                "for arithmetic.")
 
     @staticmethod
     def _format_observations(observations: list[dict] | None) -> str:
@@ -212,7 +226,8 @@ class OllamaProvider(Provider):
                 "information is genuinely required.")
 
     def tool_decision(self, message: str, tools: list[dict],
-                      observations: list[dict] | None = None) -> dict | None:
+                      observations: list[dict] | None = None,
+                      memories: list[dict] | None = None) -> dict | None:
         """One constrained JSON decision pass at temperature 0.
 
         Returns {"tool": str|None, "args": dict} or None on any failure —
@@ -225,6 +240,7 @@ class OllamaProvider(Provider):
         )
         prompt = self._DECISION_PROMPT.format(
             tools=tool_lines, message=message,
+            memories=self._format_memories(memories),
             observations=self._format_observations(observations))
         body = json.dumps({
             "model": self.model, "prompt": prompt, "stream": False,

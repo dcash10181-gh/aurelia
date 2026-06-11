@@ -38,8 +38,21 @@ _MAX_MSG_CHARS = 1200
 _MAX_MEMORIES = 5
 
 
+def recall_memories(message: str, memory) -> list[dict]:
+    """FTS5 BM25 recall (match-any) for the current message. Shared by the
+    provider context AND the tool-decision pass so both see the same facts."""
+    if memory is None:
+        return []
+    try:
+        return memory.search_memories(message, limit=_MAX_MEMORIES, match_any=True)
+    except Exception as e:  # a memory failure must never kill a turn
+        log.warning("memory recall failed: %s", e)
+        return []
+
+
 def build_context(message: str, memory=None,
-                  history: list[dict] | None = None) -> list[dict]:
+                  history: list[dict] | None = None,
+                  hits: list[dict] | None = None) -> list[dict]:
     """Assemble the provider-facing context for one turn.
 
     Returns chat-format messages: an optional leading system message carrying
@@ -48,20 +61,16 @@ def build_context(message: str, memory=None,
     use context (echo, mini) simply ignore it — injection never breaks them.
     """
     ctx: list[dict] = []
-    if memory is not None:
-        try:
-            hits = memory.search_memories(message, limit=_MAX_MEMORIES, match_any=True)
-        except Exception as e:  # a memory failure must never kill a turn
-            log.warning("memory recall failed: %s", e)
-            hits = []
-        if hits:
-            lines = "\n".join(f"- {h['content']}" for h in hits)
-            ctx.append({
-                "role": "system",
-                "content": ("Relevant saved memories about this user (use them "
-                            "when they apply; do not recite them unprompted):\n"
-                            + lines),
-            })
+    if hits is None:
+        hits = recall_memories(message, memory)
+    if hits:
+        lines = "\n".join(f"- {h['content']}" for h in hits)
+        ctx.append({
+            "role": "system",
+            "content": ("Relevant saved memories about this user (use them "
+                        "when they apply; do not recite them unprompted):\n"
+                        + lines),
+        })
     for m in (history or [])[-_MAX_HISTORY_MSGS:]:
         content = str(m.get("content", ""))[:_MAX_MSG_CHARS]
         ctx.append({"role": m.get("role", "user"), "content": content})
@@ -69,7 +78,8 @@ def build_context(message: str, memory=None,
 
 
 def _llm_select_tool(message: str, provider: Provider, tools: ToolRegistry,
-                     observations: list[dict] | None = None) -> dict[str, Any] | None:
+                     observations: list[dict] | None = None,
+                     memories: list[dict] | None = None) -> dict[str, Any] | None:
     """Ask a capable provider to route the request (one ReAct step). Returns
     a validated {"tool": name, "args": dict}, or None (no capability,
     declined, malformed, unknown tool) → the loop stops.
@@ -79,7 +89,8 @@ def _llm_select_tool(message: str, provider: Provider, tools: ToolRegistry,
     from ..config import settings  # late import: tests monkeypatch settings
     if not settings.llm_tool_selection:
         return None
-    decision = provider.tool_decision(message, tools.list(), observations)
+    decision = provider.tool_decision(message, tools.list(), observations,
+                                      memories=memories)
     if not decision or not decision.get("tool"):
         return None
     name = decision["tool"]
@@ -90,7 +101,8 @@ def _llm_select_tool(message: str, provider: Provider, tools: ToolRegistry,
     return {"tool": name, "args": decision.get("args") or {}}
 
 
-def _react_steps(message: str, provider: Provider, tools: ToolRegistry):
+def _react_steps(message: str, provider: Provider, tools: ToolRegistry,
+                 memories: list[dict] | None = None):
     """The ReAct core: decide → act → observe, repeated.
 
     Yields one observation dict per executed tool call. Guards:
@@ -105,7 +117,7 @@ def _react_steps(message: str, provider: Provider, tools: ToolRegistry):
     observations: list[dict] = []
     seen: set[tuple] = set()
     for _ in range(max(1, settings.agent_max_steps)):
-        sel = _llm_select_tool(message, provider, tools, observations)
+        sel = _llm_select_tool(message, provider, tools, observations, memories)
         if sel is None:
             return
         key = (sel["tool"], json.dumps(sel["args"], sort_keys=True, default=str))
@@ -161,10 +173,11 @@ def run_agent_turn(
     so a turn never pays for two decision calls.
     """
     tool_calls: list[dict] = []
-    ctx = build_context(message, memory, history)
+    hits = recall_memories(message, memory)
+    ctx = build_context(message, memory, history, hits=hits)
 
     if use_llm_selection:
-        observations = list(_react_steps(message, provider, tools))
+        observations = list(_react_steps(message, provider, tools, hits))
         if observations:
             reply = provider.generate(
                 _compose_react_prompt(message, observations), ctx)
@@ -216,10 +229,11 @@ def run_agent_turn_stream(message: str, provider: Provider, tools: ToolRegistry,
     adds latency without value. Model-routed turns stream provider tokens
     as they are produced.
     """
-    ctx = build_context(message, memory, history)
+    hits = recall_memories(message, memory)
+    ctx = build_context(message, memory, history, hits=hits)
 
     observations: list[dict] = []
-    for obs in _react_steps(message, provider, tools):
+    for obs in _react_steps(message, provider, tools, hits):
         observations.append(obs)
         # Surface each act/observe step live so the UI can show progress.
         yield {"tool_event": obs}
