@@ -192,6 +192,27 @@ def _host_is_private(host: str) -> bool:
     return False
 
 
+def _ssl_context():
+    """TLS context: system trust store PLUS certifi's CA bundle.
+
+    Two real-world failure modes, opposite fixes: python.org framework
+    installs on macOS ship without a usable system store (certifi fixes
+    them); corporate/proxy environments have their CA only in the system
+    store (certifi-only would break them). Loading certifi on top of the
+    system defaults covers both. SECURITY: verification is never disabled —
+    a failure with both stores loaded is a real problem with the remote
+    host and must surface.
+    """
+    import ssl
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except ImportError:
+        pass  # system defaults only
+    return ctx
+
+
 class WebTool:
     """User-directed HTTP(S) GET with hard limits. No POST, no auth, no
     cookies — read-only by design; side-effectful web actions are a
@@ -211,7 +232,8 @@ class WebTool:
             raise ValueError("Refusing to fetch private/loopback/unresolvable hosts")
         req = urllib.request.Request(url, headers={
             "User-Agent": "AURELIA/0.1 (local-first personal agent)"})
-        with urllib.request.urlopen(req, timeout=self.TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=self.TIMEOUT,
+                                    context=_ssl_context()) as resp:
             ctype = resp.headers.get("Content-Type", "")
             raw = resp.read(self.MAX_BYTES)
         text = raw.decode("utf-8", errors="replace")
