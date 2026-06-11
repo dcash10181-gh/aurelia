@@ -124,6 +124,14 @@ async def chat_stream(req: ChatRequest):
                                       "X-Accel-Buffering": "no"})
 
 
+@app.delete("/api/messages")
+async def clear_messages():
+    """New-chat: clears conversation history (the agent's 12-message context
+    window reads from this table). Durable memories are not affected."""
+    n = db.clear_messages()
+    return {"cleared": n}
+
+
 @app.get("/api/messages")
 def messages(limit: int = 50):
     return db.recent_messages(limit=min(limit, 500))
