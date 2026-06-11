@@ -45,7 +45,7 @@ def test_fetch_extracts_text_and_caps(monkeypatch):
 
     import urllib.request
     monkeypatch.setattr(urllib.request, "urlopen",
-                        lambda req, timeout=0: FakeResp(html.encode()))
+                        lambda req, timeout=0, context=None: FakeResp(html.encode()))
     monkeypatch.setattr("aurelia_api.tools.builtin._host_is_private",
                         lambda h: False)
     out = WebTool().fetch({"url": "https://example.com/x"})
@@ -83,3 +83,14 @@ def test_web_tool_is_config_gated(tmp_path):
     off = {t["name"] for t in build_default_registry(tmp_path, enable_web=False).list()}
     assert "web.fetch" in on and "web.fetch" not in off
     assert {"files.read", "files.write", "files.list"} <= on
+
+
+def test_ssl_context_uses_certifi_and_verifies():
+    """Cert verification must be ON and backed by certifi's bundle —
+    regression for macOS python.org installs that ship without a trust
+    store. Never CERT_NONE."""
+    import ssl
+    from aurelia_api.tools.builtin import _ssl_context
+    ctx = _ssl_context()
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
