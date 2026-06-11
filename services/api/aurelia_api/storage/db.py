@@ -20,6 +20,17 @@ CREATE TABLE IF NOT EXISTS memories (
     tags TEXT NOT NULL DEFAULT '',
     created_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    prompt TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    provider TEXT,
+    conversation_id TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at REAL NOT NULL,
+    last_run_at REAL,
+    last_error TEXT
+);
 CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New chat',
@@ -220,6 +231,50 @@ class Database:
             conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
             cur = conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
             return cur.rowcount > 0
+
+    def rename_conversation(self, conv_id: str, title: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute("UPDATE conversations SET title = ? WHERE id = ?",
+                               (title.strip()[:80] or "Untitled", conv_id))
+            return cur.rowcount > 0
+
+    # ----------------------------------------------------------------- tasks
+    def create_task(self, prompt: str, schedule: str, provider: str | None,
+                    conversation_id: str) -> dict[str, Any]:
+        row = {"id": uuid.uuid4().hex, "prompt": prompt, "schedule": schedule,
+               "provider": provider, "conversation_id": conversation_id,
+               "enabled": 1, "created_at": time.time(),
+               "last_run_at": None, "last_error": None}
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO tasks (id, prompt, schedule, provider, conversation_id,"
+                " enabled, created_at, last_run_at, last_error) VALUES "
+                "(:id, :prompt, :schedule, :provider, :conversation_id,"
+                " :enabled, :created_at, :last_run_at, :last_error)", row)
+        return row
+
+    def list_tasks(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM tasks ORDER BY created_at").fetchall()
+        return [dict(r) for r in rows]
+
+    def set_task_enabled(self, task_id: str, enabled: bool) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute("UPDATE tasks SET enabled = ? WHERE id = ?",
+                               (1 if enabled else 0, task_id))
+            return cur.rowcount > 0
+
+    def delete_task(self, task_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            return cur.rowcount > 0
+
+    def record_task_run(self, task_id: str, when: float,
+                        error: str | None = None) -> None:
+        with self.connect() as conn:
+            conn.execute("UPDATE tasks SET last_run_at = ?, last_error = ? "
+                         "WHERE id = ?", (when, error, task_id))
 
     def maybe_autotitle(self, conv_id: str, first_message: str) -> None:
         """First user message becomes the title of an untitled conversation."""

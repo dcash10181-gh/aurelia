@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, workspace, Memory, ProviderInfo, Status, ToolInfo } from "../lib/api";
+import { api, tasks as tasksApi, Task, workspace, Memory, ProviderInfo, Status, ToolInfo } from "../lib/api";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -26,6 +26,20 @@ export function SidePanel({
   const providerRef = useRef(provider);
   providerRef.current = provider;
   const [wsFiles, setWsFiles] = useState<string[]>([]);
+  const [taskList, setTaskList] = useState<Task[]>([]);
+  const [taskPrompt, setTaskPrompt] = useState("");
+  const [taskSched, setTaskSched] = useState("daily 08:00");
+
+  async function addTask() {
+    if (!taskPrompt.trim()) return;
+    try {
+      await tasksApi.create(taskPrompt.trim(), taskSched.trim());
+      setTaskPrompt("");
+      setTaskList(await tasksApi.list());
+    } catch {
+      window.alert("Schedule must be like '30m', '2h', or 'daily 08:00'");
+    }
+  }
   const [wsOpen, setWsOpen] = useState<string | null>(null);
   const [wsContent, setWsContent] = useState("");
 
@@ -37,11 +51,12 @@ export function SidePanel({
 
   async function refresh() {
     try {
-      const [s, t, p, m, w] = await Promise.all([
+      const [s, t, p, m, w, tk] = await Promise.all([
         api.status(), api.tools(), api.providers(), api.memories(),
         workspace.list().catch(() => [] as string[]),
+        tasksApi.list().catch(() => [] as Task[]),
       ]);
-      setStatus(s); setTools(t); setProviders(p); setMemories(m); setWsFiles(w); setErr(false);
+      setStatus(s); setTools(t); setProviders(p); setMemories(m); setWsFiles(w); setTaskList(tk); setErr(false);
       if (!providerRef.current) setProvider(s.default_provider);
     } catch { setErr(true); }
   }
@@ -96,6 +111,42 @@ export function SidePanel({
             </li>
           ))}
         </ul>
+      </Section>
+
+      <Section title="Tasks">
+        <div className="flex gap-1 mb-2">
+          <input value={taskPrompt} onChange={(e) => setTaskPrompt(e.target.value)}
+                 placeholder="e.g. summarize news.ycombinator.com"
+                 className="flex-1 bg-well border border-line rounded px-2 py-1 text-xs text-mist" />
+        </div>
+        <div className="flex gap-1 mb-2">
+          <input value={taskSched} onChange={(e) => setTaskSched(e.target.value)}
+                 placeholder="30m / 2h / daily 08:00"
+                 className="w-28 bg-well border border-line rounded px-2 py-1 text-xs text-mist" />
+          <button onClick={addTask}
+                  className="text-xs border border-line rounded px-2 py-1 text-mist/70 hover:text-gold">
+            Schedule
+          </button>
+        </div>
+        {taskList.length === 0 ? (
+          <p className="text-xs text-mist/50">No scheduled tasks.</p>
+        ) : (
+          <ul className="text-xs space-y-1.5">
+            {taskList.map((t) => (
+              <li key={t.id} className="flex items-start gap-1.5">
+                <button onClick={async () => { await tasksApi.toggle(t.id, !t.enabled); setTaskList(await tasksApi.list()); }}
+                        title={t.enabled ? "Disable" : "Enable"}
+                        className={t.enabled ? "text-teal" : "text-mist/40"}>●</button>
+                <span className="flex-1 break-words text-mist/80">
+                  {t.prompt} <span className="text-mist/40">({t.schedule}{t.last_error ? " · last run failed" : ""})</span>
+                </span>
+                <button onClick={async () => { await tasksApi.remove(t.id); setTaskList(await tasksApi.list()); }}
+                        title="Delete task" className="text-mist/40 hover:text-gold">✕</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[10px] text-mist/40 mt-1.5">Results appear as ⏱ conversations.</p>
       </Section>
 
       <Section title="Workspace">
