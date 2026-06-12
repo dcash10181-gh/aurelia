@@ -1,6 +1,7 @@
 # Roadmap
 
 ## Near-term
+- ~~AURELIA-1: larger BPE-based local model~~ — shipped: byte-level BPE tokenizer, ~7M-param config, 400KB original corpus, selectable provider, CLI train/generate, honest framing preserved.
 - ~~Daily-driver round 2: background tasks + conversation rename/delete~~ — shipped: interval/daily scheduler in app lifespan, per-task result conversations, TASKS panel, ✎/🗑 conversation controls.
 - ~~Daily-driver: first-class conversations + workspace browser~~ — shipped: per-chat scoped history with migration, auto-titles, UI switcher/resume, read-only workspace file browser in the side panel, qa.sh root-guard.
 - ~~Actuator pack: web.fetch + workspace files~~ — shipped: SSRF-guarded read-only web fetch, sandboxed general file workspace, config-gated.

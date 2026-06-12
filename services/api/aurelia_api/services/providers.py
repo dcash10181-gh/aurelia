@@ -124,6 +124,54 @@ class MiniLLMProvider(Provider):
         yield self.DISCLAIMER
 
 
+class Aurelia1Provider(Provider):
+    """AURELIA-1: the larger BPE-based educational model. Same honest framing
+    as the mini model — word-like, not intelligent — but a clear step up.
+    Independent checkpoint and loaders so it coexists with 'mini'."""
+    name = "aurelia1"
+
+    DISCLAIMER = ("\n\n— AURELIA-1 (from-scratch educational model; word-like "
+                  "but not factual or intelligent)")
+
+    def __init__(self, checkpoint: str | None = None):
+        self.checkpoint = checkpoint
+        self._gen = None
+        self._stream_gen = None
+        self._err: str | None = None
+
+    def _load(self):
+        if self._gen is not None:
+            return
+        try:
+            from aurelia_mini_llm.aurelia1 import (
+                load_generator, load_stream_generator)
+            self._gen = load_generator(self.checkpoint)
+            self._stream_gen = load_stream_generator(self.checkpoint)
+            self._err = None
+        except Exception as e:  # torch missing, no checkpoint yet, etc.
+            self._err = str(e)
+            # Re-checkable: no checkpoint now doesn't mean none after training.
+
+    def available(self) -> bool:
+        self._load()
+        return self._gen is not None
+
+    def generate(self, prompt: str, history: list[dict] | None = None) -> str:
+        self._load()
+        if self._gen is None:
+            return (f"AURELIA-1 unavailable ({self._err}). Train it first: "
+                    "`aurelia train-aurelia1`, then retry.")
+        return f"{self._gen(prompt)}{self.DISCLAIMER}"
+
+    def stream(self, prompt: str, history: list[dict] | None = None) -> Iterator[str]:
+        self._load()
+        if self._stream_gen is None:
+            yield from super().stream(prompt, history)
+            return
+        yield from self._stream_gen(prompt)
+        yield self.DISCLAIMER
+
+
 class OllamaProvider(Provider):
     """Optional adapter for a locally running Ollama server."""
     name = "ollama"
@@ -298,5 +346,6 @@ def build_providers(settings) -> dict[str, Provider]:
     return {
         "echo": RuleBasedProvider(),
         "mini": MiniLLMProvider(),
+        "aurelia1": Aurelia1Provider(),
         "ollama": OllamaProvider(settings.ollama_base_url, settings.ollama_model),
     }
