@@ -1,13 +1,23 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { chatStream, Conversation, conversations, ToolCall } from "../lib/api";
 import { Halo } from "./Halo";
+import { HoloCore } from "./HoloCore";
+
+// WebGL capability probe — fall back to the SVG halo on machines/contexts
+// without it rather than showing an empty box.
+const HAS_WEBGL = (() => {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl") || c.getContext("experimental-webgl"));
+  } catch { return false; }
+})();
 
 interface Msg { role: "user" | "assistant"; content: string; meta?: string; steps?: ToolCall[] }
 
 export function Chat({ provider, onToolUse }: { provider: string | null; onToolUse: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [state, setState] = useState<"idle" | "thinking" | "tool">("idle");
+  const [state, setState] = useState<"idle" | "thinking" | "tool" | "error">("idle");
   const [convs, setConvs] = useState<Conversation[]>([]);
   const [convId, setConvId] = useState<string>("default");
 
@@ -73,6 +83,8 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
         return next;
       });
     } catch (err) {
+      setState("error");
+      window.setTimeout(() => setState("idle"), 2500);
       // Replace the (possibly empty) streaming bubble with the error.
       setMsgs((m) => {
         const next = m.slice();
@@ -94,7 +106,7 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
   return (
     <section className="flex h-full flex-col" aria-label="Conversation">
       <div className="flex flex-col items-center pt-6 pb-2">
-        <Halo state={state} />
+        {HAS_WEBGL ? <HoloCore state={state} /> : <Halo state={state} />}
         <h1 className="font-display text-3xl tracking-[0.35em] text-gold mt-2">AURELIA</h1>
         <p className="text-faint text-xs tracking-widest uppercase mt-1">
           your local-first intelligent command layer
