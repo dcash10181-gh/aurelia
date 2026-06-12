@@ -9,22 +9,79 @@
  * teal, error flares red. Procedural throughout (no asset pipeline), so it
  * stays local-first and reacts instantly to props.
  *
+ * Post-processing (the "movie grade" layer): an HDR bloom pass whose strength
+ * is itself a state channel — idle glows softly, thinking burns brighter,
+ * error flares hard — plus a subtle radial chromatic aberration. The final
+ * composite derives canvas alpha from luminance: this scene is pure
+ * glow-on-black, so brightness IS coverage, which lets bloom coexist with the
+ * transparent canvas over the CSS observatory backdrop (UnrealBloomPass would
+ * otherwise force an opaque black canvas and erase the stage's grid/vignette).
+ *
  * Built on three.js with hand-rolled animation rather than react-three-fiber:
  * one dependency, full control of the render loop, and no reconciler overhead
  * on a 60fps scene.
  */
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 
 export type AgentState = "idle" | "thinking" | "tool" | "error";
 
 // State → visual identity. Colors are the AURELIA palette (gold/teal/bronze)
 // pushed to luminance that reads as "emissive hologram" rather than flat fill.
-const STATE_STYLE: Record<AgentState, { core: number; glow: number; spin: number; pulse: number }> = {
-  idle:     { core: 0xe8c476, glow: 0x9a7b3f, spin: 0.15, pulse: 0.6 },
-  thinking: { core: 0xffd98a, glow: 0xe8c476, spin: 1.1,  pulse: 2.2 },
-  tool:     { core: 0x5fa8a0, glow: 0x5fa8a0, spin: 0.7,  pulse: 1.6 },
-  error:    { core: 0xe06b6b, glow: 0xb84a4a, spin: 0.4,  pulse: 3.0 },
+// `bloom` is the post-fx glow strength — a first-class state channel, eased
+// like the rest so transitions feel like power ramping, not a light switch.
+// Exported so tests can pin the contract without a WebGL context.
+export const STATE_STYLE: Record<
+  AgentState,
+  { core: number; glow: number; spin: number; pulse: number; bloom: number }
+> = {
+  idle:     { core: 0xe8c476, glow: 0x9a7b3f, spin: 0.15, pulse: 0.6, bloom: 0.65 },
+  thinking: { core: 0xffd98a, glow: 0xe8c476, spin: 1.1,  pulse: 2.2, bloom: 1.25 },
+  tool:     { core: 0x5fa8a0, glow: 0x5fa8a0, spin: 0.7,  pulse: 1.6, bloom: 0.95 },
+  error:    { core: 0xe06b6b, glow: 0xb84a4a, spin: 0.4,  pulse: 3.0, bloom: 1.7 },
+};
+
+/**
+ * Final composite: radial chromatic aberration + alpha-from-luminance.
+ * Runs after OutputPass (so it sees display-referred sRGB values) and renders
+ * to screen. Alpha = max channel: bright hologram pixels are opaque, dark
+ * pixels transparent, so the page's CSS backdrop shows through untouched.
+ * Exported for shader-contract tests.
+ */
+export const HoloCompositeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uChroma: { value: 0.0075 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uChroma;
+    varying vec2 vUv;
+    void main() {
+      // Radial aberration: zero at center, grows quadratically to the edges —
+      // reads as lens physics rather than a broken display.
+      vec2 c = vUv - 0.5;
+      vec2 off = c * dot(c, c) * uChroma;
+      float r = texture2D(tDiffuse, vUv + off).r;
+      float g = texture2D(tDiffuse, vUv).g;
+      float b = texture2D(tDiffuse, vUv - off).b;
+      vec3 col = vec3(r, g, b);
+      // Brightness IS coverage in a glow-on-black scene. The 1.15 lift keeps
+      // mid-glow from going too ghostly over the backdrop.
+      float a = clamp(max(col.r, max(col.g, col.b)) * 1.15, 0.0, 1.0);
+      gl_FragColor = vec4(col, a);
+    }`,
 };
 
 export function HoloCore({ state }: { state: AgentState }) {
@@ -54,6 +111,7 @@ export function HoloCore({ state }: { state: AgentState }) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W, H);
+    renderer.setClearColor(0x000000, 0); // transparent over the CSS stage
     mount.appendChild(renderer.domElement);
 
     // --- the wireframe "brain": an icosahedron whose vertices we'll perturb
@@ -127,10 +185,33 @@ export function HoloCore({ state }: { state: AgentState }) {
     ring.position.y = -1.7;
     scene.add(ring);
 
+    // --- post-processing chain.
+    // HDR half-float target so bloom has real headroom, and 4x MSAA because
+    // EffectComposer bypasses the canvas's built-in antialiasing (wireframes
+    // would go jaggy without it). three r163+ is WebGL2-only, so `samples`
+    // is safe wherever the renderer constructed at all.
+    const rt = new THREE.WebGLRenderTarget(W, H, {
+      type: THREE.HalfFloatType,
+      samples: 4,
+    });
+    const composer = new EffectComposer(renderer, rt);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(W, H),
+      STATE_STYLE[state].bloom, // strength — animated per state below
+      0.55,                     // radius — soft halo, not fog
+      0.15,                     // threshold — faint ring stays crisp
+    );
+    composer.addPass(bloomPass);
+    composer.addPass(new OutputPass()); // linear→sRGB, matches pre-composer look
+    const compositePass = new ShaderPass(HoloCompositeShader);
+    composer.addPass(compositePass);
+
     const coreColor = new THREE.Color(STATE_STYLE[state].core);
     const glowColor = new THREE.Color(STATE_STYLE[state].glow);
     let spin = STATE_STYLE[state].spin;
     let pulse = STATE_STYLE[state].pulse;
+    let bloom = STATE_STYLE[state].bloom;
 
     const clock = new THREE.Clock();
     let raf = 0;
@@ -146,11 +227,17 @@ export function HoloCore({ state }: { state: AgentState }) {
       glowColor.lerp(new THREE.Color(tgt.glow), k);
       spin += (tgt.spin - spin) * k;
       pulse += (tgt.pulse - pulse) * k;
+      bloom += (tgt.bloom - bloom) * k;
 
       coreMat.color.copy(coreColor);
       pMat.color.copy(coreColor);
       (shellMat.uniforms.uColor.value as THREE.Color).copy(glowColor);
       ringMat.color.copy(glowColor);
+
+      // Bloom breathes with the pulse — the glow is alive, not a constant.
+      // Reduced motion gets the state's static strength (color/glow still
+      // communicate state; nothing oscillates).
+      bloomPass.strength = reduceMotion ? bloom : bloom * (1 + Math.sin(t * pulse) * 0.08);
 
       if (!reduceMotion) {
         // Vertex displacement: the brain "breathes" and ripples by pulse rate.
@@ -181,7 +268,7 @@ export function HoloCore({ state }: { state: AgentState }) {
         core.scale.setScalar(breathe);
       }
 
-      renderer.render(scene, camera);
+      composer.render();
       raf = requestAnimationFrame(render);
     };
     render();
@@ -190,12 +277,16 @@ export function HoloCore({ state }: { state: AgentState }) {
       const w = mount.clientWidth, h = mount.clientHeight || 360;
       camera.aspect = w / h; camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      composer.setSize(w, h); // resizes the HDR target and every pass with it
     };
     window.addEventListener("resize", onResize);
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
+      composer.dispose(); // releases the HDR target + bloom's internal RTs
+      bloomPass.dispose();
+      compositePass.material.dispose();
       renderer.dispose();
       coreGeo.dispose(); shellGeo.dispose(); pGeo.dispose();
       ringGeo.dispose(); coreMat.dispose(); shellMat.dispose();

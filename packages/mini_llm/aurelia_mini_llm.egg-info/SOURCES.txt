@@ -13,6 +13,8 @@ aurelia_mini_llm.egg-info/SOURCES.txt
 aurelia_mini_llm.egg-info/dependency_links.txt
 aurelia_mini_llm.egg-info/requires.txt
 aurelia_mini_llm.egg-info/top_level.txt
+tests/test_aurelia1.py
+tests/test_bpe.py
 tests/test_model.py
 tests/test_tokenizer.py
 tests/test_train_generate.py
