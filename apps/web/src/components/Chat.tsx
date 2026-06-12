@@ -105,12 +105,28 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
 
   return (
     <section className="flex h-full flex-col" aria-label="Conversation">
-      <div className="flex flex-col items-center pt-6 pb-2">
-        {HAS_WEBGL ? <HoloCore state={state} /> : <Halo state={state} />}
-        <h1 className="font-display text-3xl tracking-[0.35em] text-gold mt-2">AURELIA</h1>
-        <p className="text-faint text-xs tracking-widest uppercase mt-1">
+      <div className="holo-stage hud-corners holo-scan relative flex flex-col items-center pt-6 pb-3">
+        <span className="c-bl" /><span className="c-br" />
+        <div className="boot-rise w-full flex justify-center">
+          {HAS_WEBGL ? <HoloCore state={state} /> : <Halo state={state} />}
+        </div>
+        <h1 className="boot-rise boot-rise-2 font-display text-3xl tracking-[0.35em] text-gold mt-2">AURELIA</h1>
+        <p className="boot-rise boot-rise-2 text-faint text-xs tracking-widest uppercase mt-1">
           your local-first intelligent command layer
         </p>
+        <div className="boot-rise boot-rise-3 hud-flicker mt-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em]">
+          <span className={
+            "inline-block h-1.5 w-1.5 rounded-full " +
+            (state === "idle" ? "bg-gold" : state === "tool" ? "bg-teal"
+              : state === "error" ? "bg-[#e06b6b]" : "bg-[#ffd98a]")
+          } />
+          <span className="text-mist/60">
+            {state === "idle" ? "system nominal · standing by"
+              : state === "thinking" ? "reasoning"
+              : state === "tool" ? "actuating tools"
+              : "fault — recovering"}
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4" role="log" aria-live="polite">
