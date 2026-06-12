@@ -14,7 +14,13 @@ const HAS_WEBGL = (() => {
 
 interface Msg { role: "user" | "assistant"; content: string; meta?: string; steps?: ToolCall[] }
 
-export function Chat({ provider, onToolUse }: { provider: string | null; onToolUse: () => void }) {
+export function Chat({ provider, onToolUse, registerNewSession }: {
+  provider: string | null;
+  onToolUse: () => void;
+  /** Lets the command palette trigger a new session without lifting
+   *  conversation state out of Chat — Chat stays the single owner. */
+  registerNewSession?: (fn: () => void) => void;
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [state, setState] = useState<"idle" | "thinking" | "tool" | "error">("idle");
@@ -34,10 +40,31 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
   }, []);
 
   async function switchConversation(id: string) {
+    if (state !== "idle") return; // no context tears mid-stream
     setConvId(id);
-    const ms = await conversations.messages(id);
+    const ms = await conversations.messages(id).catch(() => []);
     setMsgs(ms.map((m) => ({ role: m.role, content: m.content })));
   }
+
+  // New session: server-side conversation row first (it owns ids and titles),
+  // then a clean local slate. Guarded while streaming for the same reason the
+  // send button is — switching context under an in-flight stream would
+  // interleave histories.
+  async function newConversation() {
+    if (state !== "idle") return;
+    try {
+      const c = await conversations.create();
+      setConvs(await conversations.list());
+      setConvId(c.id);
+      setMsgs([]);
+      document.getElementById("chat-input")?.focus();
+    } catch {/* backend down; keep current session rather than fake a new one */}
+  }
+  // Expose to the command palette (⌘K → "New session"). Registered after every
+  // commit (no dep array) so the palette always calls the latest closure;
+  // registration only writes a ref in App, so this is cheap.
+  useEffect(() => { registerNewSession?.(newConversation); });
+
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
@@ -127,6 +154,35 @@ export function Chat({ provider, onToolUse }: { provider: string | null; onToolU
               : "fault — recovering"}
           </span>
         </div>
+      </div>
+
+      {/* Session bar: which timeline you're in, and the way out of it.
+          Styled as HUD chrome (mono, tracked, uppercase) — it's an
+          instrument readout, not a toolbar. */}
+      <div className="flex items-center justify-between gap-3 border-b border-line
+                      px-6 py-2 font-mono text-[10px] uppercase tracking-[0.2em]">
+        <div className="flex items-center gap-2 min-w-0">
+          <label htmlFor="session-select" className="text-faint shrink-0">Session</label>
+          <select
+            id="session-select" value={convId} disabled={state !== "idle"}
+            onChange={(e) => switchConversation(e.target.value)}
+            className="max-w-[260px] truncate bg-well border border-line rounded px-2 py-1
+                       text-mist/80 focus:border-gold/60 disabled:opacity-40"
+          >
+            {convs.length === 0 && <option value={convId}>current</option>}
+            {convs.map((c) => (
+              <option key={c.id} value={c.id}>{c.title || "untitled"}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button" onClick={newConversation} disabled={state !== "idle"}
+          aria-label="Start a new session"
+          className="shrink-0 border border-gold/40 text-gold/90 rounded px-3 py-1
+                     hover:border-gold hover:text-gold disabled:opacity-40"
+        >
+          + New session
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4" role="log" aria-live="polite">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Chat } from "./components/Chat";
 import { CommandPalette } from "./components/CommandPalette";
 import { Onboarding } from "./components/Onboarding";
@@ -13,8 +13,12 @@ export default function App() {
   );
   const [provider, setProvider] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // Chat registers its new-session handler here so the palette can trigger it
+  // without conversation state leaving Chat.
+  const newSessionRef = useRef<(() => void) | null>(null);
 
   const commands = [
+    { label: "New session", run: () => newSessionRef.current?.() },
     { label: "Switch model: echo (fallback)", run: () => setProvider("echo") },
     { label: "Switch model: mini LLM (experimental)", run: () => setProvider("mini") },
     { label: "Switch model: ollama (external)", run: () => setProvider("ollama") },
@@ -29,7 +33,8 @@ export default function App() {
       <div className="hidden md:block border-r border-line bg-well/40">
         <SidePanel provider={provider} setProvider={setProvider} refreshKey={refreshKey} />
       </div>
-      <Chat provider={provider} onToolUse={() => setRefreshKey((k) => k + 1)} />
+      <Chat provider={provider} onToolUse={() => setRefreshKey((k) => k + 1)}
+            registerNewSession={(fn) => (newSessionRef.current = fn)} />
       <CommandPalette commands={commands} />
     </div>
   );
