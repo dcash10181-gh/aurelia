@@ -137,12 +137,27 @@ def train_mini_llm(steps: int = 300) -> None:
     typer.secho("Done. Try: aurelia generate --prompt 'aurelia '", fg=typer.colors.GREEN)
 
 
+
+@app.command("train-aurelia1")
+def train_aurelia1(steps: int = 3000) -> None:
+    """Train AURELIA-1 — the larger BPE model (a few minutes on CPU)."""
+    from aurelia_mini_llm.aurelia1 import train
+    from aurelia_mini_llm.config import Aurelia1Config
+    cfg = Aurelia1Config(max_steps=steps)
+    train(cfg)
+
+
 @app.command()
 def generate(prompt: str = typer.Option("aurelia ", "--prompt"),
+             model: str = typer.Option("mini", "--model",
+                                        help="mini | aurelia1"),
              tokens: int = 160) -> None:
-    """Generate text with the trained mini LLM (educational output only)."""
+    """Generate text with a trained local model (educational output only)."""
     try:
-        from aurelia_mini_llm.generate import load_generator
+        if model == "aurelia1":
+            from aurelia_mini_llm.aurelia1 import load_generator
+        else:
+            from aurelia_mini_llm.generate import load_generator
     except ImportError:
         _die("aurelia-mini-llm not installed (requires torch).")
     try:

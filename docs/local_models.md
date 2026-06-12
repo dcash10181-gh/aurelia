@@ -40,3 +40,23 @@ agent pick it up automatically.
 ## Fallback (`echo`)
 A deterministic rule-based provider that always works, so the app is useful
 immediately after install with zero model downloads.
+
+
+## AURELIA-1 (the larger local model)
+A second from-scratch model, selectable as `aurelia1`. Differences from `mini`:
+
+- **Byte-level BPE tokenizer** (`bpe.py`) instead of character tokens — ~11
+  chars/token compression on the bundled corpus, so the model spends capacity
+  on word structure, not spelling. Byte-level base means no out-of-vocabulary
+  characters ever.
+- **~7M parameters** (6 layers, 288-dim, 128-token context) vs the mini
+  model's 105K, trained on a **400KB original corpus** (`corpus_aurelia1.txt`,
+  copyright-safe generated prose) vs 19KB.
+- Result: word-like, grammatical-looking English instead of character babble.
+
+Train it: `aurelia train-aurelia1` (a few minutes on CPU; faster on Apple
+Silicon). Generate: `aurelia generate --model aurelia1 --prompt "the agent "`.
+
+**Still not intelligent.** AURELIA-1 is an educational language model — it has
+no knowledge and cannot reason. Every output carries a disclaimer. For real
+local intelligence, select an Ollama model (e.g. qwen2.5:14b).
