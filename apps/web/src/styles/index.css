@@ -26,12 +26,21 @@ body { @apply bg-night text-mist font-body antialiased; }
    reduced-motion.
    ============================================================ */
 
-/* Ambient vignette + faint grid: the "observatory" backdrop. */
+/* Ambient vignette + faint grid: the "observatory" backdrop.
+   The photographic plate (a generated observation-deck interior whose gold
+   light-traces and teal readouts ARE the AURELIA palette) sits at the bottom
+   of the stack. A night-toned scrim above it guarantees the title/status text
+   keeps contrast and the core's glow stays the brightest thing on stage —
+   the backdrop is set dressing, never competition. Center-frame of the plate
+   is intentionally empty: the core overlays it. */
 .holo-stage {
   position: relative;
   background:
     radial-gradient(ellipse 80% 60% at 50% 38%, rgba(232,196,118,0.06), transparent 70%),
-    radial-gradient(ellipse 120% 80% at 50% 100%, rgba(95,168,160,0.05), transparent 60%);
+    radial-gradient(ellipse 120% 80% at 50% 100%, rgba(95,168,160,0.05), transparent 60%),
+    linear-gradient(180deg, rgba(16,23,26,0.62) 0%, rgba(16,23,26,0.55) 55%, rgba(11,17,19,0.88) 100%),
+    url("../assets/observatory.webp") center 42% / cover no-repeat,
+    #10171A;
 }
 .holo-stage::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;

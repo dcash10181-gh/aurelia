@@ -28,6 +28,13 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+// The sculpted reactor asset (Blender-authored: crystalline core + three
+// gimbal rings as named nodes). Resolved through Vite so it's fingerprinted;
+// loading is async and strictly additive — the procedural icosahedron renders
+// first and remains the permanent fallback if the asset is missing or fails.
+const CORE_ASSET_URL = new URL("../assets/aurelia_core.glb", import.meta.url);
 
 export type AgentState = "idle" | "thinking" | "tool" | "error";
 
@@ -120,7 +127,9 @@ export function HoloCore({ state }: { state: AgentState }) {
     const coreMat = new THREE.MeshBasicMaterial({
       color: STATE_STYLE[state].core, wireframe: true, transparent: true, opacity: 0.9,
     });
-    const core = new THREE.Mesh(coreGeo, coreMat);
+    // Widened geometry type: the sculpted GLB crystal swaps in at runtime.
+    const core: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> =
+      new THREE.Mesh(coreGeo, coreMat);
     scene.add(core);
 
     // --- glass shell with a Fresnel rim (the "containment field" look)
@@ -185,6 +194,45 @@ export function HoloCore({ state }: { state: AgentState }) {
     ring.position.y = -1.7;
     scene.add(ring);
 
+    // --- sculpted reactor (async upgrade path).
+    // When the GLB lands: the crystal's geometry replaces the icosahedron's
+    // under the SAME core material and breathing loop (imported geometry must
+    // obey the state contract — a static showpiece would be a downgrade), and
+    // the gimbal rings join the scene with the glow material. Each gimbal's
+    // Blender orientation is a node transform, so rotateZ() spins it on a
+    // distinct world axis for free. On any failure: procedural core stays.
+    const gimbals: THREE.Mesh[] = [];
+    const gimbalMat = new THREE.MeshBasicMaterial({
+      color: STATE_STYLE[state].glow, transparent: true, opacity: 0.5,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    let crystalGeo: THREE.BufferGeometry | null = null;
+    let crystalBase: Float32Array | null = null;
+    new GLTFLoader().load(
+      CORE_ASSET_URL.href,
+      (gltf) => {
+        gltf.scene.traverse((node) => {
+          if (!(node as THREE.Mesh).isMesh) return;
+          const mesh = node as THREE.Mesh;
+          if (mesh.name === "CoreCrystal") {
+            crystalGeo = mesh.geometry;
+            crystalBase = new Float32Array(
+              crystalGeo.attributes.position.array as Float32Array);
+            core.geometry = crystalGeo; // coreMat + animation carry over
+          } else if (mesh.name.startsWith("Gimbal")) {
+            const g = new THREE.Mesh(mesh.geometry, gimbalMat);
+            g.position.copy(mesh.position);
+            g.quaternion.copy(mesh.quaternion);
+            g.scale.copy(mesh.scale);
+            gimbals.push(g);
+            scene.add(g);
+          }
+        });
+      },
+      undefined,
+      () => {/* asset missing or unparsable: the procedural core is the product */},
+    );
+
     // --- post-processing chain.
     // HDR half-float target so bloom has real headroom, and 4x MSAA because
     // EffectComposer bypasses the canvas's built-in antialiasing (wireframes
@@ -233,6 +281,7 @@ export function HoloCore({ state }: { state: AgentState }) {
       pMat.color.copy(coreColor);
       (shellMat.uniforms.uColor.value as THREE.Color).copy(glowColor);
       ringMat.color.copy(glowColor);
+      gimbalMat.color.copy(glowColor);
 
       // Bloom breathes with the pulse — the glow is alive, not a constant.
       // Reduced motion gets the state's static strength (color/glow still
@@ -241,19 +290,28 @@ export function HoloCore({ state }: { state: AgentState }) {
 
       if (!reduceMotion) {
         // Vertex displacement: the brain "breathes" and ripples by pulse rate.
-        for (let i = 0; i < corePos.count; i++) {
+        // Drives whichever geometry is live — the procedural icosahedron, or
+        // the sculpted crystal once the GLB swaps in (same state contract).
+        const livePos = crystalGeo ? crystalGeo.attributes.position : corePos;
+        const liveBase = crystalBase ?? basePositions;
+        for (let i = 0; i < livePos.count; i++) {
           const ix = i * 3;
-          const bx = basePositions[ix], by = basePositions[ix + 1], bz = basePositions[ix + 2];
+          const bx = liveBase[ix], by = liveBase[ix + 1], bz = liveBase[ix + 2];
           const n = Math.sin(t * pulse + bx * 3 + by * 2 + bz) * 0.04;
           const s = 1 + n;
-          corePos.setXYZ(i, bx * s, by * s, bz * s);
+          livePos.setXYZ(i, bx * s, by * s, bz * s);
         }
-        corePos.needsUpdate = true;
+        livePos.needsUpdate = true;
 
         core.rotation.y += spin * 0.01;
         core.rotation.x = Math.sin(t * 0.3) * 0.15;
         shell.rotation.y -= spin * 0.004;
         particles.rotation.y += spin * 0.002;
+
+        // Gimbals counter-rotate at staggered rates on their own baked axes —
+        // alternating direction so the assembly reads as a gyroscope, not a lid.
+        gimbals.forEach((g, i) =>
+          g.rotateZ((i % 2 ? -1 : 1) * spin * (0.006 + i * 0.0025)));
 
         // Particles drift along their orbits.
         const arr = pGeo.attributes.position.array as Float32Array;
@@ -290,7 +348,9 @@ export function HoloCore({ state }: { state: AgentState }) {
       renderer.dispose();
       coreGeo.dispose(); shellGeo.dispose(); pGeo.dispose();
       ringGeo.dispose(); coreMat.dispose(); shellMat.dispose();
-      pMat.dispose(); ringMat.dispose();
+      pMat.dispose(); ringMat.dispose(); gimbalMat.dispose();
+      crystalGeo?.dispose();
+      gimbals.forEach((g) => g.geometry.dispose());
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
   }, []); // scene built once; state changes flow through targetRef
